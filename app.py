@@ -1271,6 +1271,19 @@ def create_scheduled_task():
         if len(scheduled_times) == 0:
             logger.warning("Попытка создать задачу с пустым списком времён")
             return jsonify({'success': False, 'error': 'At least one scheduled time is required'})
+
+        # Validate all scheduled times are in the future (at least 5 seconds from now)
+        min_allowed_time = datetime.utcnow() + timedelta(seconds=5)
+        for dt_str in scheduled_times:
+            try:
+                local_dt = datetime.strptime(dt_str, '%Y-%m-%dT%H:%M')
+                utc_dt = local_dt - timedelta(minutes=tz_offset)
+                if utc_dt < min_allowed_time:
+                    logger.warning(f"Попытка создать слот с временем в прошлом: Local {dt_str}, UTC {utc_dt}")
+                    return jsonify({'success': False, 'error': 'All scheduled times must be at least 5 seconds in the future'})
+            except ValueError as e:
+                logger.warning(f"Invalid datetime format: {dt_str}")
+                return jsonify({'success': False, 'error': 'Invalid datetime format'})
             
     except json.JSONDecodeError:
         return jsonify({'success': False, 'error': 'Invalid JSON data'})
@@ -1472,8 +1485,8 @@ def cancel_task(task_id):
         row = result.fetchone()
 
         if not row:
-            return jsonify({"status": "already_cancelled"})
-            
+            return jsonify({"success": True, "status": "already_cancelled"})
+
         # If it returned a row → task was active → then also cancel all slots
         sql_slots = text("""
             UPDATE scheduled_time_slots
@@ -1482,7 +1495,7 @@ def cancel_task(task_id):
         """)
         db.session.execute(sql_slots, {"task_id": task_id})
         db.session.commit()
-        return jsonify({"status": "cancelled"})
+        return jsonify({"success": True, "status": "cancelled"})
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error in cancel_task: {e}")
