@@ -165,9 +165,25 @@ class TaskService:
                     success, error_msg = False, None
                     try:
                         async def send_internal(p_id, txt, imgs, pos='top'):
+                            """
+                            Отправка сообщения с правильным использованием API Telethon
+                            
+                            Args:
+                                p_id: ID получателя
+                                txt: Текст сообщения (может быть пустым)
+                                imgs: Список путей к картинкам или JSON строка (может быть None)
+                                pos: Позиция подписи ('top' - снизу, 'top_inverted' - сверху)
+                            """
                             try:
-                                try: peer = await manager.client.get_input_entity(int(p_id))
-                                except: peer = await manager.client.get_input_entity(str(p_id))
+                                from telethon import types, functions
+                                
+                                # 1. ПОЛУЧИТЬ ENTITY ПОЛУЧАТЕЛЯ
+                                try: 
+                                    peer = await manager.client.get_input_entity(int(p_id))
+                                except: 
+                                    peer = await manager.client.get_input_entity(str(p_id))
+                                
+                                # 2. ОБРАБОТАТЬ КАРТИНКИ
                                 f_send = None
                                 if imgs:
                                     try:
@@ -175,25 +191,97 @@ class TaskService:
                                             img_list = json.loads(imgs)
                                         else:
                                             img_list = imgs if isinstance(imgs, list) else []
+                                        
+                                        # Сжать и отфильтровать существующие файлы
                                         if img_list:
                                             from telegram_client import compress_image
-                                            f_send = [compress_image(p) for p in img_list if os.path.exists(p)]
+                                            f_send = []
+                                            for p in img_list:
+                                                if os.path.exists(p):
+                                                    try:
+                                                        compressed = compress_image(p)
+                                                        if compressed:
+                                                            f_send.append(compressed)
+                                                    except Exception as e:
+                                                        logger.warning(f"Ошибка сжатия изображения {p}: {e}")
+                                            
+                                            # Если все картинки не существуют - сделать f_send = None
+                                            if not f_send:
+                                                f_send = None
                                     except Exception as e:
                                         logger.warning(f"Ошибка парсинга изображений для слота {slot_id}: {e}")
-                                        # Продолжаем без изображений
+                                        f_send = None
                                 
-                                # Send image(s) with caption using send_file (correct Telethon syntax)
-                                if f_send and txt:
-                                    # Image(s) + text (caption) - use send_file with caption
-                                    await manager.client.send_file(peer, f_send, caption=txt, parse_mode='html')
+                                # 3. ОПРЕДЕЛИТЬ ЗНАЧЕНИЕ invert_media
+                                invert_media = (pos == 'top_inverted')  # True если подпись сверху, False если снизу
+                                
+                                # 4. ПРАВИЛЬНАЯ ЛОГИКА ОТПРАВКИ
+                                if not f_send and not txt:
+                                    # Случай 1: Ничего нет - ошибка
+                                    return False, "No text or images to send"
+                                
+                                elif f_send and txt:
+                                    # Случай 2: Есть картинки И текст - отправить одним сообщением с caption
+                                    # Поддержка нескольких картинок (альбом)
+                                    if len(f_send) == 1:
+                                        # ОДНА КАРТИНКА - использовать SendMediaRequest
+                                        media = await manager.client.upload_file(f_send[0])
+                                        msg = await manager.client(functions.messages.SendMediaRequest(
+                                            peer=peer,
+                                            media=types.InputMediaUploadedPhoto(file=media),
+                                            message=txt,
+                                            invert_media=invert_media,  # ← КЛЮЧЕВОЙ ПАРАМЕТР: подпись сверху/снизу
+                                            parse_mode='html'
+                                        ))
+                                    else:
+                                        # НЕСКОЛЬКО КАРТИНОК - использовать SendMultiMediaRequest (альбом)
+                                        multi_media = []
+                                        for idx, img_path in enumerate(f_send):
+                                            media = await manager.client.upload_file(img_path)
+                                            multi_media.append(
+                                                types.InputSingleMedia(
+                                                    media=types.InputMediaUploadedPhoto(file=media),
+                                                    message=txt if idx == 0 else '',  # Текст только к первой
+                                                    parse_mode='html'
+                                                )
+                                            )
+                                        msg = await manager.client(functions.messages.SendMultiMediaRequest(
+                                            peer=peer,
+                                            multi_media=multi_media,
+                                            invert_media=invert_media  # ← КЛЮЧЕВОЙ ПАРАМЕТР: подпись сверху/снизу
+                                        ))
+                                
                                 elif f_send:
-                                    # Image(s) only, no caption
-                                    await manager.client.send_file(peer, f_send)
-                                elif txt:
-                                    # Text only, no image
+                                    # Случай 3: Только картинки - без caption
+                                    if len(f_send) == 1:
+                                        # ОДНА КАРТИНКА
+                                        media = await manager.client.upload_file(f_send[0])
+                                        msg = await manager.client(functions.messages.SendMediaRequest(
+                                            peer=peer,
+                                            media=types.InputMediaUploadedPhoto(file=media)
+                                        ))
+                                    else:
+                                        # НЕСКОЛЬКО КАРТИНОК - альбом без текста
+                                        multi_media = []
+                                        for idx, img_path in enumerate(f_send):
+                                            media = await manager.client.upload_file(img_path)
+                                            multi_media.append(
+                                                types.InputSingleMedia(
+                                                    media=types.InputMediaUploadedPhoto(file=media)
+                                                )
+                                            )
+                                        msg = await manager.client(functions.messages.SendMultiMediaRequest(
+                                            peer=peer,
+                                            multi_media=multi_media
+                                        ))
+                                
+                                else:
+                                    # Случай 4: Только текст
                                     await manager.client.send_message(peer, txt, parse_mode='html')
+                                
                                 return True, None
-                            except Exception as e: return False, str(e)
+                            except Exception as e:
+                                return False, str(e)
                         success, error_msg = manager._run_async(send_internal(r_id_str, msg_text, img_path, img_pos))
                     except Exception as e: error_msg = str(e)
 
