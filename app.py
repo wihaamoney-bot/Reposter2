@@ -1578,6 +1578,7 @@ def get_completed_tasks():
                 'is_scheduled': True, # Это задачи из планировщика
                 'recipients_info': get_task_recipients_status(task.id),
                 'time_slots': [{
+                    'id': s.id,
                     'datetime': s.scheduled_datetime.isoformat(),
                     'is_sent': s.status == 'completed',
                     'is_partial': s.status == 'completed_with_errors',
@@ -1590,6 +1591,105 @@ def get_completed_tasks():
     except Exception as e:
         logger.error(f"Ошибка получения выполненных задач: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/slot/<int:slot_id>/recipients-status')
+@login_required
+def get_slot_recipients_status(slot_id):
+    """Получить детальную информацию о статусе отправки сообщений для конкретного слота"""
+    try:
+        from models import SentMessage
+        
+        # Получаем слот и проверяем права доступа
+        slot = ScheduledTimeSlot.query.get(slot_id)
+        if not slot:
+            return jsonify({'success': False, 'error': 'Slot not found'}), 404
+        
+        # Проверяем, что слот принадлежит задаче текущего пользователя
+        task = ScheduledTask.query.filter_by(id=slot.task_id, user_id=current_user.id).first()
+        if not task:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Получаем информацию о слоте
+        slot_info = {
+            'id': slot.id,
+            'task_id': slot.task_id,
+            'scheduled_datetime': slot.scheduled_datetime.isoformat(),
+            'status': slot.status,
+            'total_recipients': slot.total_recipients,
+            'processed_recipients': slot.processed_recipients,
+            'percentage': int((slot.processed_recipients / slot.total_recipients * 100) if slot.total_recipients > 0 else 0)
+        }
+        
+        # Получаем все SentMessage записи для этого слота
+        sent_messages = SentMessage.query.filter_by(slot_id=slot_id).all()
+        sent_map = {sm.recipient_id: sm for sm in sent_messages}
+        
+        # Получаем информацию о получателях из задачи
+        recipients_info = {}
+        if task.recipients_info:
+            try:
+                meta_list = json.loads(task.recipients_info)
+                for item in meta_list:
+                    if isinstance(item, dict) and 'id' in item:
+                        recipients_info[str(item['id'])] = item.get('name') or item.get('title') or item.get('username') or str(item['id'])
+            except:
+                pass
+        
+        # Получаем список всех получателей
+        recipients_list = []
+        if task.recipients:
+            try:
+                recipients_ids = json.loads(task.recipients)
+            except:
+                recipients_ids = []
+        else:
+            recipients_ids = []
+        
+        # Формируем список получателей с их статусами
+        for r in recipients_ids:
+            if isinstance(r, (str, int)):
+                r_id = str(r)
+            elif isinstance(r, dict):
+                r_id = str(r.get('id', 'unknown'))
+            else:
+                continue
+            
+            # Получаем имя получателя
+            r_name = recipients_info.get(r_id, r_id)
+            
+            # Получаем статус из sent_messages
+            sent_msg = sent_map.get(r_id)
+            if sent_msg:
+                status = sent_msg.status
+                sent_at = sent_msg.sent_at.isoformat() if sent_msg.sent_at else None
+                error_message = sent_msg.error_message
+            else:
+                # Если записи нет, статус зависит от статуса слота и задачи
+                if task.was_cancelled or slot.status == 'cancelled':
+                    status = 'cancelled'
+                elif slot.status in ['pending', 'executing']:
+                    status = 'pending'
+                else:
+                    status = 'pending'
+                sent_at = None
+                error_message = None
+            
+            recipients_list.append({
+                'recipient_id': r_id,
+                'name': r_name,
+                'status': status,
+                'sent_at': sent_at,
+                'error_message': error_message
+            })
+        
+        return jsonify({
+            'success': True,
+            'slot': slot_info,
+            'recipients': recipients_list
+        })
+    except Exception as e:
+        logger.error(f"Error getting slot recipients status: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/scheduler/delete/<int:task_id>', methods=['DELETE'])
 @login_required

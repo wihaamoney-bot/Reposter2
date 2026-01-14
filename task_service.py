@@ -182,12 +182,16 @@ class TaskService:
                                         logger.warning(f"Ошибка парсинга изображений для слота {slot_id}: {e}")
                                         # Продолжаем без изображений
                                 
-                                if pos == 'top_inverted' and f_send:
-                                    if txt:
-                                        await manager.client.send_message(peer, txt, parse_mode='html')
-                                    await manager.client.send_message(peer, "", file=f_send)
-                                else:
-                                    await manager.client.send_message(peer, txt, file=f_send, parse_mode='html')
+                                # ALWAYS use caption for ONE message with image + text
+                                if f_send and txt:
+                                    # Send image with caption in ONE message
+                                    await manager.client.send_message(peer, file=f_send, caption=txt, parse_mode='html')
+                                elif f_send:
+                                    # Image only, no caption
+                                    await manager.client.send_message(peer, file=f_send)
+                                elif txt:
+                                    # Text only, no image
+                                    await manager.client.send_message(peer, txt, parse_mode='html')
                                 return True, None
                             except Exception as e: return False, str(e)
                         success, error_msg = manager._run_async(send_internal(r_id_str, msg_text, img_path, img_pos))
