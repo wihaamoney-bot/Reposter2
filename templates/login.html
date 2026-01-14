@@ -1,0 +1,55 @@
+{% extends "base.html" %} {% block title %}Вход - Telegram Sender{% endblock %}
+{% block content %}
+<div class="row justify-content-center align-items-center min-vh-100">
+  <div class="col-md-5 col-lg-4">
+    <div class="card shadow-lg">
+      <div class="card-body p-5">
+        <div class="text-center mb-4">
+          <i class="bi bi-telegram telegram-icon"></i>
+          <h2 class="mt-3">Telegram Sender</h2>
+          <p class="text-muted">Войдите в систему</p>
+        </div>
+
+        <form method="POST" action="{{ url_for('login') }}">
+          <div class="mb-3">
+            <label for="username" class="form-label">Логин</label>
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="bi bi-person"></i>
+              </span>
+              <input
+                type="text"
+                class="form-control"
+                id="username"
+                name="username"
+                required
+                autofocus
+              />
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label for="password" class="form-label">Пароль</label>
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="bi bi-lock"></i>
+              </span>
+              <input
+                type="password"
+                class="form-control"
+                id="password"
+                name="password"
+                required
+              />
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-telegram w-100">
+            <i class="bi bi-box-arrow-in-right"></i> Войти
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

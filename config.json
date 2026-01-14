@@ -1,0 +1,20 @@
+{
+  "admin": {
+    "login": "admin",
+    "password": "123"
+  },
+  "telegram": {
+    "api_id": "37466362",
+    "api_hash": "3f1219c3b13c6ff93bb9bdb4d078afe0",
+    "session_name": "telegram_session"
+  },
+  "messaging": {
+    "delay_between_messages": 15,
+    "min_delay_for_groups": 17
+  },
+  "cleanup": {
+    "image_cache_days": 2,
+    "completed_tasks_months": 1,
+    "session_cache_days": 30
+  }
+}

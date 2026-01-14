@@ -1,0 +1,337 @@
+{% extends "base.html" %} {% block title %}Авторизация в Telegram{% endblock %}
+{% block content %}
+<div class="row justify-content-center align-items-center min-vh-100">
+  <div class="col-md-6 col-lg-5">
+    <div class="card shadow-lg">
+      <div class="card-body p-5">
+        <div class="text-center mb-4">
+          <i class="bi bi-telegram telegram-icon"></i>
+          <h2 class="mt-3">Авторизация в Telegram</h2>
+          <p class="text-muted">Войдите в свой Telegram аккаунт</p>
+        </div>
+
+        <div id="phoneStep">
+          <div class="mb-3">
+            <label for="phone" class="form-label">Номер телефона</label>
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="bi bi-phone"></i>
+              </span>
+              <input
+                type="tel"
+                class="form-control"
+                id="phone"
+                placeholder="+7XXXXXXXXXX"
+                required
+              />
+            </div>
+            <small class="form-text text-muted"
+              >Введите номер телефона в международном формате</small
+            >
+          </div>
+
+          <button
+            type="button"
+            class="btn btn-telegram w-100"
+            id="sendCodeBtn"
+            onclick="sendCode()"
+          >
+            <i class="bi bi-send"></i> Отправить код
+          </button>
+        </div>
+
+        <div id="codeStep" style="display: none">
+          <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> Код подтверждения отправлен.
+            <hr>
+            <strong>Где искать код?</strong>
+            <ul class="mb-0 small">
+              <li>В чате <strong>"Telegram"</strong> (сервисные уведомления) внутри приложения на другом устройстве.</li>
+              <li>Если вы не вошли ни на одном устройстве, код придет в <strong>СМС</strong>.</li>
+            </ul>
+          </div>
+
+          <div class="mb-3">
+            <label for="code" class="form-label">Код подтверждения</label>
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="bi bi-key"></i>
+              </span>
+              <input
+                type="text"
+                class="form-control"
+                id="code"
+                placeholder="12345"
+                required
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="btn btn-telegram w-100"
+            id="verifyCodeBtn"
+            onclick="verifyCode()"
+          >
+            <i class="bi bi-check-circle"></i> Подтвердить
+          </button>
+
+          <button
+            type="button"
+            class="btn btn-outline-primary w-100 mt-2"
+            id="resendCodeBtn"
+            onclick="resendCode()"
+            disabled
+          >
+            <i class="bi bi-arrow-clockwise"></i> Отправить повторно <span id="resendTimer"></span>
+          </button>
+
+          <button
+            type="button"
+            class="btn btn-outline-secondary w-100 mt-2"
+            onclick="resetForm()"
+          >
+            <i class="bi bi-arrow-left"></i> Назад
+          </button>
+        </div>
+
+        <div id="passwordStep" style="display: none">
+          <div class="alert alert-warning">
+            <i class="bi bi-shield-lock"></i> Требуется пароль двухфакторной аутентификации
+          </div>
+
+          <div class="mb-3">
+            <label for="password" class="form-label">Облачный пароль</label>
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="bi bi-lock"></i>
+              </span>
+              <input
+                type="password"
+                class="form-control"
+                id="2fa_password"
+                placeholder="Введите ваш пароль"
+                required
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="btn btn-telegram w-100"
+            id="verifyPasswordBtn"
+            onclick="verifyPassword()"
+          >
+            <i class="bi bi-check-circle"></i> Войти
+          </button>
+
+          <button
+            type="button"
+            class="btn btn-outline-danger w-100 mt-4"
+            onclick="hardReset()"
+          >
+            <i class="bi bi-trash"></i> Сбросить всё и начать заново
+          </button>
+        </div>
+
+        <div id="loadingSpinner" class="text-center" style="display: none">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Загрузка...</span>
+          </div>
+          <p class="mt-2 text-muted">Подождите...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block extra_js %}
+<script>
+  let resendTimerInterval;
+
+  function startResendTimer(seconds = 60) {
+    const btn = document.getElementById("resendCodeBtn");
+    const timerSpan = document.getElementById("resendTimer");
+    btn.disabled = true;
+    
+    let timeLeft = seconds;
+    timerSpan.textContent = `(${timeLeft}с)`;
+
+    clearInterval(resendTimerInterval);
+    resendTimerInterval = setInterval(() => {
+      timeLeft--;
+      if (timeLeft <= 0) {
+        clearInterval(resendTimerInterval);
+        btn.disabled = false;
+        timerSpan.textContent = "";
+      } else {
+        timerSpan.textContent = `(${timeLeft}с)`;
+      }
+    }, 1000);
+  }
+
+  async function resendCode() {
+    const phone = document.getElementById("phone").value.trim();
+    if (!phone) {
+      showAlert("Введите номер телефона", "warning");
+      return;
+    }
+
+    showLoading();
+    try {
+      const response = await fetch("/api/telegram/send_code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: phone, retry: true }),
+      });
+      const data = await response.json();
+      hideLoading();
+      document.getElementById("codeStep").style.display = "block";
+      
+      if (data.success) {
+        showAlert("Код отправлен повторно!", "success");
+        startResendTimer(60);
+      } else {
+        showAlert("Ошибка: " + data.error, "danger");
+      }
+    } catch (error) {
+      hideLoading();
+      document.getElementById("codeStep").style.display = "block";
+      showAlert("Ошибка соединения: " + error.message, "danger");
+    }
+  }
+
+  function showLoading() {
+    document.getElementById("phoneStep").style.display = "none";
+    document.getElementById("codeStep").style.display = "none";
+    document.getElementById("loadingSpinner").style.display = "block";
+  }
+
+  function hideLoading() {
+    document.getElementById("loadingSpinner").style.display = "none";
+  }
+
+  function resetForm() {
+    document.getElementById("phoneStep").style.display = "block";
+    document.getElementById("codeStep").style.display = "none";
+    document.getElementById("passwordStep").style.display = "none";
+    document.getElementById("code").value = "";
+    document.getElementById("2fa_password").value = "";
+  }
+
+  function resetToCode() {
+    document.getElementById("codeStep").style.display = "block";
+    document.getElementById("passwordStep").style.display = "none";
+    document.getElementById("2fa_password").value = "";
+    document.getElementById("code").value = ""; // Очищаем старый код для безопасности
+    showAlert("Введите код подтверждения еще раз", "info");
+  }
+
+  async function sendCode() {
+    const phone = document.getElementById("phone").value.trim();
+
+    if (!phone) {
+      showAlert("Введите номер телефона", "warning");
+      return;
+    }
+
+    showLoading();
+
+    try {
+      const response = await fetch("/api/telegram/send_code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: phone }),
+      });
+
+      const data = await response.json();
+
+      hideLoading();
+
+      if (data.success) {
+        document.getElementById("phoneStep").style.display = "none";
+        document.getElementById("codeStep").style.display = "block";
+        if (data.reused) {
+            showAlert("Используйте код из предыдущего СМС", "info");
+        } else {
+            showAlert("Код отправлен!", "success");
+        }
+        startResendTimer(60);
+      } else {
+        document.getElementById("phoneStep").style.display = "block";
+        showAlert("Ошибка: " + data.error, "danger");
+      }
+    } catch (error) {
+      hideLoading();
+      document.getElementById("phoneStep").style.display = "block";
+      showAlert("Ошибка соединения: " + error.message, "danger");
+    }
+  }
+
+  async function verifyCode() {
+    const code = document.getElementById("code").value.trim();
+
+    if (!code) {
+      showAlert("Введите код подтверждения", "warning");
+      return;
+    }
+
+    showLoading();
+
+    try {
+      const response = await fetch("/api/telegram/verify_code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ code: code }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showAlert("Авторизация успешна! Перенаправление...", "success");
+        setTimeout(() => {
+          window.location.href = '{{ url_for("contacts") }}';
+        }, 1500);
+      } else if (data.need_password) {
+        hideLoading();
+        document.getElementById("codeStep").style.display = "none";
+        document.getElementById("passwordStep").style.display = "block";
+        showAlert("Требуется пароль 2FA", "info");
+      } else {
+        hideLoading();
+        document.getElementById("codeStep").style.display = "block";
+        showAlert("Ошибка: " + data.error, "danger");
+      }
+    } catch (error) {
+      hideLoading();
+      document.getElementById("codeStep").style.display = "block";
+      showAlert("Ошибка соединения: " + error.message, "danger");
+    }
+  }
+
+  async function verifyPassword() {
+    // ... существующий код ...
+  }
+
+  async function hardReset() {
+    if (!confirm("Это полностью сбросит текущую попытку входа. Продолжить?")) return;
+    showLoading();
+    try {
+        await fetch("/api/telegram/send_code", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone: document.getElementById("phone").value.trim(), retry: true })
+        });
+        location.reload();
+    } catch (e) {
+        hideLoading();
+        showAlert("Ошибка при сбросе", "danger");
+    }
+  }
+</script>
+{% endblock %}

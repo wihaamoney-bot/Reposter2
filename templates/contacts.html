@@ -1,0 +1,1208 @@
+{% extends "base.html" %} {% block title %}Контакты и Группы{% endblock %} {%
+block content %}
+<div class="row">
+  <div class="col-12">
+    <h2 class="mb-4">
+      <i class="bi bi-chat-dots"></i> Контакты, Группы и Каналы
+    </h2>
+
+    <ul class="nav nav-tabs mb-4" id="entityTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="contacts-tab" data-bs-toggle="tab" data-bs-target="#contacts" type="button" role="tab">
+          <i class="bi bi-people"></i> Контакты
+          <span class="badge bg-secondary" id="contactsCount">0</span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="groups-tab" data-bs-toggle="tab" data-bs-target="#groups" type="button" role="tab">
+          <i class="bi bi-chat-square-text"></i> Группы
+          <span class="badge bg-secondary" id="groupsCount">0</span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="channels-tab" data-bs-toggle="tab" data-bs-target="#channels" type="button" role="tab">
+          <i class="bi bi-broadcast"></i> Каналы
+          <span class="badge bg-secondary" id="channelsCount">0</span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="folders-tab" data-bs-toggle="tab" data-bs-target="#folders" type="button" role="tab">
+          <i class="bi bi-folder"></i> Папки
+          <span class="badge bg-secondary" id="foldersCount">0</span>
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="entityTabContent">
+      <div class="tab-pane fade show active" id="contacts" role="tabpanel">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-people"></i> Список контактов</span>
+            <button class="btn btn-sm btn-outline-primary" onclick="selectAll('contacts')">
+              <i class="bi bi-check-all"></i> Выбрать все
+            </button>
+          </div>
+          <div class="card-body">
+            <div id="contactsList" class="entity-list">
+              <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Загрузка...</span>
+                </div>
+                <p class="mt-3 text-muted">Загрузка контактов...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="groups" role="tabpanel">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-chat-square-text"></i> Список групп</span>
+            <button class="btn btn-sm btn-outline-primary" onclick="selectAll('groups')">
+              <i class="bi bi-check-all"></i> Выбрать все
+            </button>
+          </div>
+          <div class="card-body">
+            <div id="groupsList" class="entity-list">
+              <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Загрузка...</span>
+                </div>
+                <p class="mt-3 text-muted">Загрузка групп...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="channels" role="tabpanel">
+        <div class="card">
+          <div class="card-header">
+            <span><i class="bi bi-broadcast"></i> Список каналов</span>
+            <small class="text-muted ms-2">(только для просмотра, отправка в каналы недоступна)</small>
+          </div>
+          <div class="card-body">
+            <div id="channelsList" class="entity-list">
+              <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Загрузка...</span>
+                </div>
+                <p class="mt-3 text-muted">Загрузка каналов...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="folders" role="tabpanel">
+        <div class="card">
+          <div class="card-header">
+            <span><i class="bi bi-folder"></i> Папки Telegram</span>
+          </div>
+          <div class="card-body">
+            <div id="foldersAccordion" class="accordion">
+              <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Загрузка...</span>
+                </div>
+                <p class="mt-3 text-muted">Загрузка папок...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-4">
+      <div class="card-header">
+        <i class="bi bi-send"></i> Отправка сообщений
+      </div>
+      <div class="card-body">
+        <form id="sendMessageForm" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label for="messageText" class="form-label">Текст сообщения</label>
+            <textarea class="form-control" id="messageText" rows="5" placeholder="Введите текст сообщения..."></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label for="messageImages" class="form-label">Прикрепить изображения (необязательно, до 10 штук)</label>
+            <input type="file" class="form-control" id="messageImages" accept="image/*" style="display: none;">
+            <div class="d-flex gap-2 mb-2">
+              <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('messageImages').click()">
+                <i class="bi bi-plus-circle"></i> Добавить изображение
+              </button>
+              <button type="button" class="btn btn-sm btn-danger" id="clearImagesBtn" style="display: none;" onclick="removeAllMessageImages()">
+                <i class="bi bi-x"></i> Удалить все
+              </button>
+            </div>
+            <div id="messageImagesPreview" class="mt-2 d-flex flex-wrap gap-2" style="display: none;"></div>
+            <small class="text-muted" id="imagesCountInfo" style="display: none;"></small>
+          </div>
+
+          <div class="mb-3" id="imagePositionContainer" style="display: none;">
+            <label class="form-label">Расположение изображений</label>
+            <div class="d-flex flex-column gap-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="imagePosition" id="imagePositionTop" value="top" checked>
+                <label class="form-check-label" for="imagePositionTop">
+                  <i class="bi bi-image me-1"></i> Подпись снизу
+                  <small class="text-muted d-block">Стандартное расположение: картинка сверху, текст под ней</small>
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="imagePosition" id="imagePositionTopInverted" value="top_inverted">
+                <label class="form-check-label" for="imagePositionTopInverted">
+                  <i class="bi bi-card-text me-1"></i> Подпись сверху
+                  <small class="text-muted d-block">Переместить подпись наверх: текст над картинкой</small>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <span class="text-muted" id="selectedRecipientsHeader" style="cursor: pointer;" onclick="toggleSelectedRecipientsList()">
+                Выбрано получателей: <strong id="selectedCount">0</strong>
+                <i class="bi bi-chevron-down ms-1" id="selectedRecipientsArrow"></i>
+              </span>
+            </div>
+            <div>
+              <button type="button" class="btn btn-primary" onclick="sendToSelected()" id="sendBtn">
+                <i class="bi bi-send"></i> Отправить выбранным
+              </button>
+              <button type="button" class="btn btn-success ms-2" onclick="scheduleMessage()">
+                <i class="bi bi-clock"></i> Запланировать
+              </button>
+            </div>
+          </div>
+          
+          <div id="selectedRecipientsList" class="mt-3 p-3 bg-light border rounded" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="mb-0"><i class="bi bi-people-fill"></i> Список выбранных</h6>
+              <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearAllSelected()">
+                <i class="bi bi-trash"></i> Очистить всех
+              </button>
+            </div>
+            <div id="selectedRecipientsContent" class="d-flex flex-wrap gap-2" style="max-height: 300px; overflow-y: auto;">
+            </div>
+          </div>
+        </form>
+
+        <div id="sendProgress" class="mt-3" style="display: none">
+          <div class="progress">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" id="sendProgressBar" role="progressbar" style="width: 0%"></div>
+          </div>
+          <p class="text-center mt-2 text-muted" id="sendProgressText">Отправка...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="topicsModal" tabindex="-1" aria-labelledby="topicsModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="topicsModalLabel">Выберите топик</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-3">Эта группа имеет топики. Выберите, куда отправить сообщение:</p>
+        <div id="topicsList">
+          <div class="text-center py-3">
+            <div class="spinner-border spinner-border-sm text-primary" role="status">
+              <span class="visually-hidden">Загрузка...</span>
+            </div>
+            <span class="ms-2">Загрузка топиков...</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} 
+
+{% block extra_js %}
+<script>
+  let allContacts = [];
+  let allGroups = [];
+  let allChannels = [];
+  let allFolders = [];
+  let selectedImages = [];
+  let selectedImagesData = [];
+  let groupTopics = {};
+  let currentTopicGroupId = null;
+  // selectionOrder is managed globally in script.js and defined on window.selectionOrder
+
+  document.addEventListener("DOMContentLoaded", function () {
+    loadContacts();
+    loadGroups();
+    loadChannels();
+    loadFolders();
+    updateSelectedCount();
+  });
+
+  async function loadFolders() {
+    try {
+      const response = await fetch("/api/telegram/folders");
+      const data = await response.json();
+
+      if (data.success) {
+        allFolders = data.folders;
+        displayFolders(allFolders);
+        document.getElementById("foldersCount").textContent = allFolders.length;
+      } else {
+        document.getElementById("foldersAccordion").innerHTML = '<p class="text-center text-muted py-5">Не удалось загрузить папки</p>';
+      }
+    } catch (error) {
+      document.getElementById("foldersAccordion").innerHTML = '<p class="text-center text-danger py-5">Ошибка загрузки папок</p>';
+    }
+  }
+
+  function displayFolders(folders) {
+    const container = document.getElementById("foldersAccordion");
+    if (folders.length === 0) {
+      container.innerHTML = '<p class="text-center text-muted py-5">Папки не найдены</p>';
+      return;
+    }
+
+    let html = '';
+    folders.forEach((folder, index) => {
+      html += `
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="headingFolder_${folder.id}">
+            <div class="d-flex align-items-center w-100 accordion-button-container">
+              <button class="accordion-button collapsed flex-grow-1" type="button" data-bs-toggle="collapse" 
+                      data-bs-target="#collapseFolder_${folder.id}" aria-expanded="false" 
+                      onclick="loadFolderChats(${folder.id})">
+                ${folder.emoticon ? folder.emoticon + ' ' : ''}${escapeHtml(folder.title)}
+              </button>
+              <button class="btn btn-sm btn-outline-primary me-3 select-all-folder-btn" 
+                      onclick="selectAllInFolder(event, ${folder.id})">
+                <i class="bi bi-check-all"></i> Выбрать все
+              </button>
+            </div>
+          </h2>
+          <div id="collapseFolder_${folder.id}" class="accordion-collapse collapse" 
+               aria-labelledby="headingFolder_${folder.id}" data-bs-parent="#foldersAccordion">
+            <div class="accordion-body">
+              <div id="folderList_${folder.id}" class="entity-list">
+                <div class="text-center py-3">
+                  <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Загрузка...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+  }
+
+  async function loadFolderChats(folderId) {
+    const container = document.getElementById(`folderList_${folderId}`);
+    // Если уже загружено, не загружаем повторно
+    if (container.querySelector('.row')) return;
+
+    try {
+      const response = await fetch(`/api/telegram/folders/${folderId}/chats`);
+      const data = await response.json();
+
+      if (data.success) {
+        if (data.chats.length === 0) {
+          container.innerHTML = '<p class="text-center text-muted">В этой папке нет подходящих чатов</p>';
+          return;
+        }
+
+        let html = '<div class="row">';
+        data.chats.forEach(chat => {
+          const avatarIcon = chat.type === "contact" ? "person-circle" : "people-fill";
+            const uniqueId = `folder_${folderId}_${chat.id}`;
+            const realId = String(chat.id);
+            
+            // Проверяем, является ли чат каналом (broadcast)
+            const isChannel = chat.type === "channel";
+            
+            if (chat.type === "group" && chat.has_topics) {
+              const topicBadge = groupTopics[chat.id] 
+                ? `<span class="badge bg-success ms-2 topic-badge" id="topicBadge_${uniqueId}" style="cursor: pointer;" onclick="changeTopicForGroup(event, ${chat.id}, '${uniqueId}')">${escapeHtml(groupTopics[chat.id].title)} <i class="bi bi-pencil-fill" style="font-size: 0.7em;"></i></span>`
+                : `<span class="badge bg-warning text-dark ms-2 topic-badge" id="topicBadge_${uniqueId}" style="cursor: pointer;" onclick="changeTopicForGroup(event, ${chat.id}, '${uniqueId}')">Выберите топик</span>`;
+              
+              html += `
+                <div class="col-md-6 col-lg-4 mb-3">
+                  <div class="entity-item">
+                    <div class="form-check d-flex align-items-center">
+                      <input class="form-check-input me-3" type="checkbox" 
+                             value="${escapeHtml(realId)}" id="${uniqueId}" 
+                             data-has-topics="true"
+                             onchange="handleSelectionChange(this)">
+                      <label class="form-check-label flex-grow-1" for="${uniqueId}">
+                        <div class="d-flex align-items-center">
+                          <i class="bi bi-${avatarIcon} fs-2 text-primary me-3"></i>
+                          <div>
+                            <div class="fw-bold">${escapeHtml(chat.name)}</div>
+                            ${topicBadge}
+                            ${chat.username ? '<small class="text-muted d-block">@' + escapeHtml(chat.username) + "</small>" : ""}
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              `;
+            } else if (chat.type === "channel") {
+              html += `
+                <div class="col-md-6 col-lg-4 mb-3 opacity-75">
+                  <div class="entity-item">
+                    <div class="form-check d-flex align-items-center">
+                      <input class="form-check-input me-3" type="checkbox" disabled 
+                             value="${escapeHtml(realId)}" id="${uniqueId}">
+                      <label class="form-check-label flex-grow-1" for="${uniqueId}">
+                        <div class="d-flex align-items-center">
+                          <i class="bi bi-broadcast fs-2 text-muted me-3"></i>
+                          <div>
+                            <div class="fw-bold text-muted">${escapeHtml(chat.name)}</div>
+                            <small class="text-danger d-block">Канал: отправка недоступна</small>
+                            ${chat.username ? '<small class="text-muted d-block">@' + escapeHtml(chat.username) + "</small>" : ""}
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              `;
+            } else {
+              html += `
+                <div class="col-md-6 col-lg-4 mb-3">
+                  <div class="entity-item">
+                    <div class="form-check d-flex align-items-center">
+                      <input class="form-check-input me-3" type="checkbox" 
+                             value="${escapeHtml(realId)}" id="${uniqueId}" 
+                             onchange="handleSelectionChange(this)">
+                      <label class="form-check-label flex-grow-1" for="${uniqueId}">
+                        <div class="d-flex align-items-center">
+                          <i class="bi bi-${avatarIcon} fs-2 text-primary me-3"></i>
+                          <div>
+                            <div class="fw-bold">${escapeHtml(chat.name)}</div>
+                            ${chat.username ? '<small class="text-muted">@' + escapeHtml(chat.username) + "</small>" : ""}
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }
+        });
+        html += '</div>';
+        container.innerHTML = html;
+        // Синхронизируем состояние чекбоксов, если чат уже выбран в другой вкладке
+        syncFolderCheckboxes(folderId);
+      } else {
+        container.innerHTML = `<p class="text-center text-danger">Ошибка: ${data.error}</p>`;
+      }
+    } catch (error) {
+      container.innerHTML = '<p class="text-center text-danger">Ошибка загрузки</p>';
+    }
+  }
+
+  function syncCheckboxes(type) {
+    const listId = type ? `${type}List` : null;
+    const container = listId ? document.getElementById(listId) : null;
+    if (!container) return;
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+      const realId = String(cb.value);
+      if (typeof selectionOrder !== 'undefined' && selectionOrder.includes(realId)) {
+        cb.checked = true;
+      }
+    });
+  }
+
+  function syncFolderCheckboxes(folderId) {
+    const container = document.getElementById(`folderList_${folderId}`);
+    if (!container) return;
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+      const realId = String(cb.value);
+      if (typeof selectionOrder !== 'undefined' && selectionOrder.includes(realId)) {
+        cb.checked = true;
+      }
+    });
+  }
+
+  function handleSelectionChange(checkbox) {
+    const realId = String(checkbox.value);
+    const isChecked = checkbox.checked;
+    
+    // Sync all checkboxes with same value across all tabs/folders
+    document.querySelectorAll(`input[type="checkbox"][value="${realId}"]`).forEach(cb => {
+      cb.checked = isChecked;
+    });
+
+    if (isChecked) {
+      if (!selectionOrder.includes(realId)) {
+        selectionOrder.push(realId);
+      }
+    } else {
+      selectionOrder = selectionOrder.filter(id => String(id) !== realId);
+    }
+    
+    updateSelectedCount();
+  }
+
+  function syncAllCheckboxesWithValue(value, state) {
+    document.querySelectorAll(`input[type="checkbox"][value="${value}"]`).forEach(cb => {
+      cb.checked = state;
+    });
+  }
+
+  function selectAll(type, folderId = null) {
+    const listId = folderId ? `folderList_${folderId}` : `${type}List`;
+    const container = document.getElementById(listId);
+    if (!container) return;
+    
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]:not(:disabled)');
+    if (checkboxes.length === 0) return;
+    
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    checkboxes.forEach(cb => {
+      cb.checked = !allChecked;
+      handleSelectionChange(cb);
+    });
+    
+    updateSelectedCount();
+  }
+
+  function selectAllInFolder(event, folderId) {
+    event.stopPropagation();
+    selectAll(null, folderId);
+  }
+
+  async function handleFolderGroupWithTopicsChange(checkbox, groupId, uniqueId) {
+    const realId = checkbox.value;
+    if (checkbox.checked) {
+      if (!selectionOrder.includes(uniqueId)) selectionOrder.push(uniqueId);
+      
+      // Синхронизируем все чекбоксы с таким же value
+      syncAllCheckboxesWithValue(realId, true);
+      
+      if (!groupTopics[String(groupId)]) {
+        currentTopicGroupId = groupId;
+        currentTopicUniqueId = uniqueId;
+        await showTopicsModal(groupId);
+      } else {
+        updateSelectedCount();
+      }
+    } else {
+      selectionOrder = selectionOrder.filter(item => item !== uniqueId);
+      // Синхронизируем все чекбоксы с таким же value
+      syncAllCheckboxesWithValue(realId, false);
+      updateSelectedCount();
+    }
+  }
+
+  let currentTopicUniqueId = null;
+
+  // Модифицируем существующие функции для поддержки папок
+  const originalSelectTopic = selectTopic;
+  selectTopic = function(groupId, topicId, topicTitle) {
+    originalSelectTopic(groupId, topicId, topicTitle);
+    if (currentTopicUniqueId) {
+       const badge = document.getElementById(`topicBadge_${currentTopicUniqueId}`);
+       if (badge) {
+         badge.className = 'badge bg-success ms-2 topic-badge';
+         badge.innerHTML = `${escapeHtml(topicTitle)} <i class="bi bi-pencil-fill" style="font-size: 0.7em;"></i>`;
+       }
+    }
+    currentTopicUniqueId = null;
+  };
+
+  document.getElementById('messageImages').addEventListener('change', function(e) {
+    const files = Array.from(e.target.files);
+    
+    files.forEach(file => {
+      if (selectedImages.length >= 10) return;
+      
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        selectedImages.push(file);
+        selectedImagesData.push(event.target.result);
+        updateImagesPreview();
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    e.target.value = '';
+  });
+
+  function updateImagesPreview() {
+    const previewContainer = document.getElementById('messageImagesPreview');
+    const clearBtn = document.getElementById('clearImagesBtn');
+    const countInfo = document.getElementById('imagesCountInfo');
+    const positionContainer = document.getElementById('imagePositionContainer');
+    previewContainer.innerHTML = '';
+    
+    if (selectedImages.length > 0) {
+      previewContainer.style.display = 'flex';
+      clearBtn.style.display = 'block';
+      countInfo.style.display = 'block';
+      positionContainer.style.display = 'block';
+      countInfo.textContent = `Выбрано изображений: ${selectedImages.length}/10`;
+      
+      selectedImagesData.forEach((dataUrl, index) => {
+        const imgWrapper = document.createElement('div');
+        imgWrapper.className = 'position-relative';
+        imgWrapper.innerHTML = `
+          <img src="${dataUrl}" alt="Preview ${index + 1}" style="max-width: 100px; max-height: 100px;" class="rounded border">
+          <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">${index + 1}</span>
+          <button type="button" class="btn btn-sm btn-danger position-absolute bottom-0 start-50 translate-middle-x" style="padding: 0.1rem 0.3rem; font-size: 0.7rem;" onclick="removeImage(${index})">
+            <i class="bi bi-x"></i>
+          </button>
+        `;
+        previewContainer.appendChild(imgWrapper);
+      });
+    } else {
+      previewContainer.style.display = 'none';
+      clearBtn.style.display = 'none';
+      countInfo.style.display = 'none';
+      positionContainer.style.display = 'none';
+    }
+  }
+
+  function removeImage(index) {
+    selectedImages.splice(index, 1);
+    selectedImagesData.splice(index, 1);
+    updateImagesPreview();
+  }
+
+  function removeAllMessageImages() {
+    selectedImages = [];
+    selectedImagesData = [];
+    document.getElementById('messageImages').value = '';
+    updateImagesPreview();
+  }
+
+  function getSelectedImagesAsDataTransfer() {
+    const dt = new DataTransfer();
+    selectedImages.forEach(file => dt.items.add(file));
+    return dt.files;
+  }
+
+  async function loadContacts() {
+    try {
+      const response = await fetch("/api/telegram/contacts");
+      const data = await response.json();
+      console.log("Contacts data:", data);
+
+      if (data.success) {
+        allContacts = data.contacts;
+        displayEntities("contacts", allContacts);
+        document.getElementById("contactsCount").textContent = allContacts.length;
+        syncCheckboxes('contacts');
+      } else {
+        document.getElementById("contactsList").innerHTML = `<p class="text-center text-muted py-5">Ошибка: ${escapeHtml(data.error || 'Не удалось загрузить контакты')}</p>`;
+        if (window.UIUtils) UIUtils.showAlert("Ошибка загрузки контактов: " + data.error, "danger");
+      }
+    } catch (error) {
+      console.error("Load contacts error:", error);
+      document.getElementById("contactsList").innerHTML = '<p class="text-center text-danger py-5">Ошибка сети при загрузке контактов</p>';
+    }
+  }
+
+  async function loadGroups() {
+    try {
+      const response = await fetch("/api/telegram/groups");
+      const data = await response.json();
+      console.log("Groups data:", data);
+
+      if (data.success) {
+        allGroups = data.groups;
+        displayEntities("groups", allGroups);
+        document.getElementById("groupsCount").textContent = allGroups.length;
+        syncCheckboxes('groups');
+      } else {
+        document.getElementById("groupsList").innerHTML = `<p class="text-center text-muted py-5">Ошибка: ${escapeHtml(data.error || 'Не удалось загрузить группы')}</p>`;
+        if (window.UIUtils) UIUtils.showAlert("Ошибка загрузки групп: " + data.error, "danger");
+      }
+    } catch (error) {
+      console.error("Load groups error:", error);
+      document.getElementById("groupsList").innerHTML = '<p class="text-center text-danger py-5">Ошибка сети при загрузке групп</p>';
+    }
+  }
+
+  async function loadChannels() {
+    try {
+      const response = await fetch("/api/telegram/channels");
+      const data = await response.json();
+      console.log("Channels data:", data);
+
+      if (data.success) {
+        allChannels = data.channels;
+        displayEntities("channels", allChannels);
+        document.getElementById("channelsCount").textContent = allChannels.length;
+        syncCheckboxes('channels');
+      } else {
+        document.getElementById("channelsList").innerHTML = `<p class="text-center text-muted py-5">Ошибка: ${escapeHtml(data.error || 'Не удалось загрузить каналы')}</p>`;
+        if (window.UIUtils) UIUtils.showAlert("Ошибка загрузки каналов: " + data.error, "danger");
+      }
+    } catch (error) {
+      console.error("Load channels error:", error);
+      document.getElementById("channelsList").innerHTML = '<p class="text-center text-danger py-5">Ошибка сети при загрузке каналов</p>';
+    }
+  }
+
+  function displayEntities(type, entities) {
+    const listId = type + "List";
+    const container = document.getElementById(listId);
+
+    if (entities.length === 0) {
+      container.innerHTML = '<p class="text-center text-muted py-5">Нет данных</p>';
+      return;
+    }
+
+    let html = '<div class="row">';
+
+    entities.forEach((entity) => {
+      const avatarIcon = type === "contacts" ? "person-circle" : type === "groups" ? "people-fill" : "broadcast";
+      const realId = String(entity.id);
+      const uniqueId = `${type}_${entity.id}`;
+
+      if (type === "channels") {
+        html += `
+          <div class="col-md-6 col-lg-4 mb-3">
+            <div class="entity-item">
+              <div class="form-check d-flex align-items-center">
+                <input class="form-check-input me-3" type="checkbox" 
+                       value="${escapeHtml(realId)}" id="${uniqueId}" 
+                       onchange="handleSelectionChange(this)">
+                <label class="form-check-label flex-grow-1" for="${uniqueId}">
+                  <div class="d-flex align-items-center p-2">
+                    <i class="bi bi-${avatarIcon} fs-2 text-primary me-3"></i>
+                    <div>
+                      <div class="fw-bold">${escapeHtml(entity.name)}</div>
+                      ${entity.username ? '<small class="text-muted">@' + escapeHtml(entity.username) + "</small>" : ""}
+                      ${entity.members_count ? '<small class="text-muted d-block">' + escapeHtml(entity.members_count) + " подписчиков</small>" : ""}
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (type === "groups" && entity.has_topics) {
+        const topicBadge = groupTopics[entity.id] 
+          ? `<span class="badge bg-success ms-2 topic-badge" id="topicBadge_${entity.id}" style="cursor: pointer;" onclick="changeTopicForGroup(event, ${entity.id})" title="Нажмите, чтобы изменить топик">${escapeHtml(groupTopics[entity.id].title)} <i class="bi bi-pencil-fill" style="font-size: 0.7em;"></i></span>`
+          : `<span class="badge bg-warning text-dark ms-2 topic-badge" id="topicBadge_${entity.id}" style="cursor: pointer;" onclick="changeTopicForGroup(event, ${entity.id})" title="Нажмите, чтобы выбрать топик">Выберите топик</span>`;
+        html += `
+          <div class="col-md-6 col-lg-4 mb-3">
+            <div class="entity-item">
+              <div class="form-check d-flex align-items-center">
+                <input class="form-check-input me-3" type="checkbox" 
+                       value="${escapeHtml(realId)}" id="${uniqueId}" 
+                       data-has-topics="true"
+                       onchange="handleGroupWithTopicsChange(this, ${entity.id})">
+                <label class="form-check-label flex-grow-1" for="${uniqueId}">
+                  <div class="d-flex align-items-center">
+                    <i class="bi bi-${avatarIcon} fs-2 text-primary me-3"></i>
+                    <div>
+                      <div class="fw-bold">${escapeHtml(entity.name)} <i class="bi bi-chat-left-text text-info" title="Группа с топиками"></i></div>
+                      ${topicBadge}
+                      ${entity.username ? '<small class="text-muted d-block">@' + escapeHtml(entity.username) + "</small>" : ""}
+                      ${entity.members_count ? '<small class="text-muted">' + escapeHtml(entity.members_count) + " участников</small>" : ""}
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        html += `
+          <div class="col-md-6 col-lg-4 mb-3">
+            <div class="entity-item">
+              <div class="form-check d-flex align-items-center">
+                <input class="form-check-input me-3" type="checkbox" 
+                       value="${escapeHtml(realId)}" id="${uniqueId}" 
+                       onchange="handleSelectionChange(this)">
+                <label class="form-check-label flex-grow-1" for="${uniqueId}">
+                  <div class="d-flex align-items-center">
+                    <i class="bi bi-${avatarIcon} fs-2 text-primary me-3"></i>
+                    <div>
+                      <div class="fw-bold">${escapeHtml(entity.name)}</div>
+                      ${entity.username ? '<small class="text-muted">@' + escapeHtml(entity.username) + "</small>" : ""}
+                      ${entity.members_count ? '<small class="text-muted">' + escapeHtml(entity.members_count) + " участников</small>" : ""}
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    });
+
+    html += "</div>";
+    container.innerHTML = html;
+  }
+
+  async function handleGroupWithTopicsChange(checkbox, groupId) {
+    const checkboxId = checkbox.id;
+    const realId = checkbox.value;
+    if (checkbox.checked) {
+      if (!selectionOrder.includes(checkboxId)) {
+        selectionOrder.push(checkboxId);
+      }
+      
+      // Синхронизируем все чекбоксы с таким же value
+      syncAllCheckboxesWithValue(realId, true);
+      
+      if (!groupTopics[String(groupId)]) {
+        currentTopicGroupId = groupId;
+        await showTopicsModal(groupId);
+      } else {
+        updateSelectedCount();
+      }
+    } else {
+      selectionOrder = selectionOrder.filter(item => item !== checkboxId);
+      // Синхронизируем все чекбоксы с таким же value
+      syncAllCheckboxesWithValue(realId, false);
+      updateSelectedCount();
+    }
+  }
+
+  async function showTopicsModal(groupId) {
+    const modal = new bootstrap.Modal(document.getElementById('topicsModal'));
+    const topicsList = document.getElementById('topicsList');
+    
+    topicsList.innerHTML = `
+      <div class="text-center py-3">
+        <div class="spinner-border spinner-border-sm text-primary" role="status">
+          <span class="visually-hidden">Загрузка...</span>
+        </div>
+        <span class="ms-2">Загрузка топиков...</span>
+      </div>
+    `;
+    
+    modal.show();
+    
+    try {
+      const response = await fetch(`/api/telegram/groups/${groupId}/topics`);
+      const data = await response.json();
+      
+      if (data.success && data.topics && data.topics.length > 0) {
+        let html = '<div class="list-group">';
+        data.topics.forEach(topic => {
+          if (!topic.closed) {
+            html += `
+              <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                      onclick="selectTopic(${groupId}, ${topic.id}, '${escapeHtml(topic.title)}')">
+                <span>${escapeHtml(topic.title)}</span>
+                <i class="bi bi-chevron-right"></i>
+              </button>
+            `;
+          }
+        });
+        html += '</div>';
+        topicsList.innerHTML = html;
+      } else if (data.success && (!data.topics || data.topics.length === 0)) {
+        topicsList.innerHTML = '<p class="text-muted text-center">Топики не найдены</p>';
+        const checkbox = document.getElementById(`groups_${groupId}`);
+        if (checkbox) checkbox.checked = false;
+      } else {
+        topicsList.innerHTML = `<p class="text-danger text-center">Ошибка: ${data.error || 'Не удалось загрузить топики'}</p>`;
+        const checkbox = document.getElementById(`groups_${groupId}`);
+        if (checkbox) checkbox.checked = false;
+      }
+    } catch (error) {
+      topicsList.innerHTML = `<p class="text-danger text-center">Ошибка: ${error.message}</p>`;
+      const checkbox = document.getElementById(`groups_${groupId}`);
+      if (checkbox) checkbox.checked = false;
+    }
+  }
+
+  function selectTopic(groupId, topicId, topicTitle) {
+    groupTopics[String(groupId)] = { id: topicId, title: topicTitle };
+    
+    const badge = document.getElementById(`topicBadge_${groupId}`);
+    if (badge) {
+      badge.className = 'badge bg-success ms-2 topic-badge';
+      badge.style.cursor = 'pointer';
+      badge.title = 'Нажмите, чтобы изменить топик';
+      badge.innerHTML = `${escapeHtml(topicTitle)} <i class="bi bi-pencil-fill" style="font-size: 0.7em;"></i>`;
+      badge.onclick = function(event) { changeTopicForGroup(event, groupId); };
+    }
+    
+    const modal = bootstrap.Modal.getInstance(document.getElementById('topicsModal'));
+    modal.hide();
+    
+    updateSelectedCount();
+  }
+
+  async function changeTopicForGroup(event, groupId) {
+    event.preventDefault();
+    event.stopPropagation();
+    currentTopicGroupId = groupId;
+    await showTopicsModal(groupId);
+  }
+
+  document.getElementById('topicsModal').addEventListener('hidden.bs.modal', function () {
+    if (currentTopicGroupId) {
+      const checkbox = document.getElementById(`groups_${currentTopicGroupId}`);
+      if (checkbox && checkbox.checked && !groupTopics[String(currentTopicGroupId)]) {
+        checkbox.checked = false;
+        selectionOrder = selectionOrder.filter(item => item !== checkbox.id);
+        updateSelectedCount();
+      }
+    }
+    currentTopicGroupId = null;
+  });
+
+  function updateSelectedCount() {
+    const selectedCheckboxes = document.querySelectorAll(
+      '.entity-item input[type="checkbox"]:checked:not(#selectAllContacts):not(#selectAllGroups):not(#selectAllChannels)'
+    );
+    
+    // Use a Map to store unique entities by their value (Telegram ID)
+    const uniqueEntities = new Map();
+    const seenRealIds = new Set();
+    const newSelectionOrder = [];
+
+    selectedCheckboxes.forEach((cb) => {
+      const realId = String(cb.value);
+      if (!uniqueEntities.has(realId)) {
+        uniqueEntities.set(realId, {
+          elementId: cb.id,
+          realId: realId,
+          name: cb.closest(".entity-item")?.querySelector(".fw-bold")?.textContent || "Unknown",
+          type: cb.id.split('_')[0]
+        });
+      }
+    });
+
+    // Rebuild selectionOrder based on realIds to eliminate elementId-based duplicates
+    if (typeof selectionOrder !== 'undefined') {
+      selectionOrder.forEach(idOrValue => {
+        // Handle legacy element IDs and new real IDs gracefully
+        const cb = document.getElementById(idOrValue);
+        const val = cb ? String(cb.value) : String(idOrValue);
+        
+        if (uniqueEntities.has(val) && !seenRealIds.has(val)) {
+          seenRealIds.add(val);
+          newSelectionOrder.push(val);
+        }
+      });
+      
+      // Add any newly selected items that aren't in selectionOrder yet
+      uniqueEntities.forEach((entity, realId) => {
+        if (!seenRealIds.has(realId)) {
+          seenRealIds.add(realId);
+          newSelectionOrder.push(realId);
+        }
+      });
+      
+      selectionOrder = newSelectionOrder;
+    }
+
+    const countBadge = document.getElementById("selectedCount");
+    if (countBadge) {
+      countBadge.textContent = uniqueEntities.size;
+    }
+
+    updateSelectedRecipientsList(uniqueEntities);
+    
+    const count = uniqueEntities.size;
+    const header = document.getElementById("selectedRecipientsHeader");
+    const listDiv = document.getElementById("selectedRecipientsList");
+    const arrow = document.getElementById("selectedRecipientsArrow");
+    if (count === 0) {
+      listDiv.style.display = 'none';
+      header.style.cursor = 'default';
+      arrow.style.display = 'none';
+      arrow.className = 'bi bi-chevron-down ms-1';
+    } else {
+      header.style.cursor = 'pointer';
+      arrow.style.display = 'inline';
+    }
+  }
+  
+  function updateSelectedRecipientsList(uniqueEntitiesMap) {
+    const container = document.getElementById("selectedRecipientsContent");
+    if (!container) return;
+    
+    const recipientsInfo = selectionOrder.map(realId => {
+      const entity = uniqueEntitiesMap.get(String(realId));
+      if (!entity) return null;
+      
+      const topic = groupTopics[String(realId)];
+      return {
+        id: entity.realId,
+        name: entity.name,
+        type: entity.type,
+        topic_name: topic ? topic.title : null
+      };
+    }).filter(r => r !== null);
+
+    container.innerHTML = renderRecipientBadges(recipientsInfo, 'removeRecipientFromContacts');
+  }
+
+  window.removeRecipientFromContacts = function(index, realId) {
+    removeSelectedRecipientByRealId(realId);
+  };
+
+  function removeSelectedRecipientByRealId(realId) {
+    const checkboxes = document.querySelectorAll(`input[type="checkbox"][value="${realId}"]`);
+    checkboxes.forEach(cb => {
+      cb.checked = false;
+    });
+    
+    selectionOrder = selectionOrder.filter(id => String(id) !== String(realId));
+    updateSelectedCount();
+  }
+
+  function handleSelectionChange(checkbox) {
+    const realId = String(checkbox.value);
+    const isChecked = checkbox.checked;
+    
+    // Sync all checkboxes with same value across all tabs/folders
+    document.querySelectorAll(`input[type="checkbox"][value="${realId}"]`).forEach(cb => {
+      cb.checked = isChecked;
+    });
+
+    if (isChecked) {
+      if (!selectionOrder.includes(realId)) {
+        selectionOrder.push(realId);
+      }
+    } else {
+      selectionOrder = selectionOrder.filter(id => String(id) !== realId);
+    }
+    
+    updateSelectedCount();
+  }
+
+  function syncAllCheckboxesWithValue(value, state) {
+    document.querySelectorAll(`input[type="checkbox"][value="${value}"]`).forEach(cb => {
+      cb.checked = state;
+    });
+  }
+  
+  function toggleSelectedRecipientsList() {
+    const count = parseInt(document.getElementById("selectedCount").textContent);
+    if (count === 0) return;
+    
+    const listDiv = document.getElementById("selectedRecipientsList");
+    const arrow = document.getElementById("selectedRecipientsArrow");
+    
+    if (listDiv.style.display === 'none') {
+      listDiv.style.display = 'block';
+      arrow.className = 'bi bi-chevron-up ms-1';
+    } else {
+      listDiv.style.display = 'none';
+      arrow.className = 'bi bi-chevron-down ms-1';
+    }
+  }
+
+  function clearAllSelected() {
+    if (!confirm('Вы уверены, что хотите очистить весь список выбранных получателей?')) return;
+    
+    // Clear all checkboxes in the entire document
+    document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      if (cb.id !== 'selectAllContacts' && cb.id !== 'selectAllGroups' && cb.id !== 'selectAllChannels') {
+        cb.checked = false;
+      }
+    });
+    
+    // Clear selectionOrder
+    selectionOrder = [];
+    
+    // Update UI
+    updateSelectedCount();
+  }
+
+  function getSelectedRecipients() {
+    return [...new Set(selectionOrder)];
+  }
+
+  function getSelectedRecipientsWithTopics() {
+    const result = [];
+    const uniqueIds = new Set();
+    
+    selectionOrder.forEach(realId => {
+      if (uniqueIds.has(realId)) return;
+      uniqueIds.add(realId);
+      
+      const cb = document.querySelector(`input[type="checkbox"][value="${realId}"]`);
+      if (cb && cb.checked) {
+        const label = cb.closest('.entity-item')?.querySelector('.fw-bold');
+        const name = label ? label.textContent : 'Unknown';
+        const hasTopic = cb.dataset.hasTopics === 'true';
+        const topicInfo = groupTopics[String(realId)];
+        
+        let type = 'contact';
+        const checkboxId = cb.id;
+        if (checkboxId.startsWith('groups_')) type = 'group';
+        else if (checkboxId.startsWith('channels_')) type = 'channel';
+        else if (checkboxId.startsWith('folder_')) {
+            const iconEl = cb.closest('.entity-item').querySelector('.bi');
+            if (iconEl) {
+                if (iconEl.classList.contains('bi-people-fill')) type = 'group';
+                else if (iconEl.classList.contains('bi-broadcast')) type = 'channel';
+            }
+        }
+        
+        result.push({
+          id: realId,
+          name: name,
+          type: type,
+          topic_id: (hasTopic && topicInfo) ? topicInfo.id : null
+        });
+      }
+    });
+    return result;
+  }
+
+  async function sendToSelected() {
+    const recipients = getSelectedRecipients();
+    const recipientsWithTopics = getSelectedRecipientsWithTopics();
+    const messageText = document.getElementById("messageText").value.trim();
+
+    if (!messageText) {
+      showAlert("Введите текст сообщения", "warning");
+      return;
+    }
+
+    if (recipients.length === 0) {
+      showAlert("Выберите хотя бы одного получателя", "warning");
+      return;
+    }
+
+    const imagesInfo = selectedImages.length > 0 ? ` с ${selectedImages.length} изображениями` : '';
+    if (!confirm(`Отправить сообщение${imagesInfo} ${recipients.length} получателям?`)) {
+      return;
+    }
+
+    const sendBtn = document.getElementById("sendBtn");
+    const progressDiv = document.getElementById("sendProgress");
+
+    sendBtn.disabled = true;
+    progressDiv.style.display = "block";
+
+    try {
+      const formData = new FormData();
+      const idempotentKey = IdempotentRequestManager.generateKey();
+      
+      formData.append('message', messageText);
+      formData.append('recipients_data', JSON.stringify(recipientsWithTopics));
+      formData.append('idempotent_key', idempotentKey);
+      recipients.forEach(r => formData.append('recipients[]', r));
+      selectedImages.forEach(file => {
+        formData.append('images[]', file);
+      });
+      
+      const imagePosition = document.querySelector('input[name="imagePosition"]:checked');
+      if (imagePosition && selectedImages.length > 0) {
+        formData.append('image_position', imagePosition.value);
+      }
+
+      AppLogger.info(`Отправка с идемпотентным ключом: ${idempotentKey}`);
+
+      const response = await fetch("/api/telegram/send_message", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.sent > 0) {
+        if (data.sent === data.total) {
+          showAlert(`Успешно отправлено ${data.sent} из ${data.total} сообщений`, "success");
+        } else {
+          showAlert(`Частично отправлено: ${data.sent} из ${data.total} сообщений. Некоторые не доставлены.`, "warning");
+        }
+        document.getElementById("messageText").value = "";
+        removeAllMessageImages();
+      } else if (data.success && data.sent === 0) {
+        showAlert(`Ошибка отправки: 0 из ${data.total} сообщений доставлено. Проверьте получателей.`, "danger");
+      } else {
+        showAlert("Ошибка: " + data.error, "danger");
+      }
+    } catch (error) {
+      showAlert("Ошибка отправки: " + error.message, "danger");
+    } finally {
+      sendBtn.disabled = false;
+      progressDiv.style.display = "none";
+    }
+  }
+
+  function scheduleMessage() {
+    const messageText = document.getElementById("messageText").value.trim();
+    if (!messageText) {
+      showAlert("Введите текст сообщения", "warning");
+      return;
+    }
+
+    const recipients = getSelectedRecipients();
+    if (recipients.length === 0) {
+      showAlert("Выберите хотя бы одного получателя", "warning");
+      return;
+    }
+
+    const recipientsInfo = [];
+    const uniqueIds = new Set();
+    
+    // Используем Map для сбора информации о каждом уникальном ID из selectionOrder
+    selectionOrder.forEach(realId => {
+      if (uniqueIds.has(String(realId))) return;
+      
+      const cb = document.querySelector(`input[type="checkbox"][value="${realId}"]`);
+      if (!cb || !cb.checked) return;
+      
+      uniqueIds.add(String(realId));
+      const entityItem = cb.closest('.entity-item');
+      const label = entityItem ? entityItem.querySelector('.fw-bold') : null;
+      const name = label ? label.textContent : 'Unknown';
+      const hasTopic = cb.dataset.hasTopics === 'true';
+      const topicInfo = groupTopics[String(realId)];
+      
+      let type = 'contact';
+      if (cb.id.startsWith('groups_')) type = 'group';
+      else if (cb.id.startsWith('channels_')) type = 'channel';
+      else if (cb.id.startsWith('folder_')) {
+          const iconEl = entityItem ? entityItem.querySelector('.bi') : null;
+          if (iconEl) {
+              if (iconEl.classList.contains('bi-people-fill')) type = 'group';
+              else if (iconEl.classList.contains('bi-broadcast')) type = 'channel';
+          }
+      }
+      
+      recipientsInfo.push({
+        id: String(realId),
+        name: name,
+        type: type,
+        topic_id: (hasTopic && topicInfo) ? topicInfo.id : null,
+        topic_name: (hasTopic && topicInfo) ? topicInfo.title : null
+      });
+    });
+
+    sessionStorage.setItem("scheduledMessage", messageText);
+    sessionStorage.setItem("scheduledRecipients", JSON.stringify(recipientsInfo.map(r => r.id)));
+    sessionStorage.setItem("scheduledRecipientsInfo", JSON.stringify(recipientsInfo));
+    
+    if (selectedImages.length > 0) {
+      const imagesInfo = selectedImages.map((file, index) => ({
+        name: file.name,
+        data: selectedImagesData[index]
+      }));
+      sessionStorage.setItem("scheduledImagesData", JSON.stringify(imagesInfo));
+    }
+    
+    window.location.href = '{{ url_for("scheduler_page") }}';
+  }
+</script>
+{% endblock %}

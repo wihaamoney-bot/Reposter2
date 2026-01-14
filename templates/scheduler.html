@@ -1,0 +1,1001 @@
+{% extends "base.html" %} {% block title %}Планировщик сообщений{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2><i class="bi bi-clock"></i> Планировщик сообщений</h2>
+      <div class="text-muted" id="currentDateTime">
+        <i class="bi bi-calendar3"></i> <span id="dateDisplay"></span>
+        <i class="bi bi-clock ms-2"></i> <span id="timeDisplay"></span>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-plus-circle"></i> Создать новую задачу
+      </div>
+      <div class="card-body">
+        <form id="scheduleForm" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label for="scheduleMessage" class="form-label">Текст сообщения</label>
+            <textarea class="form-control" id="scheduleMessage" rows="4" required></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label for="scheduleImages" class="form-label">Прикрепить изображения (необязательно, до 10 штук)</label>
+            <input type="file" class="form-control" id="scheduleImages" accept="image/*" style="display: none;">
+            <div class="d-flex gap-2 mb-2">
+              <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('scheduleImages').click()">
+                <i class="bi bi-plus-circle"></i> Добавить изображение
+              </button>
+              <button type="button" class="btn btn-sm btn-danger" id="clearImagesBtn" style="display: none;" onclick="removeAllImages()">
+                <i class="bi bi-x"></i> Удалить все
+              </button>
+            </div>
+            <div id="imagePreview" class="mt-2 d-flex flex-wrap gap-2" style="display: none;"></div>
+            <small class="text-muted" id="imagesCountInfo" style="display: none;"></small>
+          </div>
+
+          <div class="mb-3" id="imagePositionContainer" style="display: none;">
+            <label class="form-label">Расположение изображений</label>
+            <div class="d-flex flex-column gap-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="imagePosition" id="imagePositionTop" value="top" checked>
+                <label class="form-check-label" for="imagePositionTop">
+                  <i class="bi bi-image me-1"></i> Подпись снизу
+                  <small class="text-muted d-block">Стандартное расположение: картинка сверху, текст под ней</small>
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="imagePosition" id="imagePositionTopInverted" value="top_inverted">
+                <label class="form-check-label" for="imagePositionTopInverted">
+                  <i class="bi bi-card-text me-1"></i> Подпись сверху
+                  <small class="text-muted d-block">Переместить подпись наверх: текст над картинкой</small>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Даты и время отправки</label>
+            <div id="scheduledTimes">
+              <div class="scheduled-time-row mb-2">
+                <div class="input-group">
+                  <input type="datetime-local" class="form-control scheduled-datetime" required>
+                  <button type="button" class="btn btn-outline-danger remove-time-btn" style="display: none;">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="addScheduledTime()">
+              <i class="bi bi-plus-circle"></i> Добавить еще дату
+            </button>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Получатели</label>
+            <div id="recipientsInfoEmpty" style="display: block;">
+              <span class="text-muted">
+                <i class="bi bi-info-circle"></i> Выберите получателей на странице контактов или
+                <a href="{{ url_for('contacts') }}">перейдите туда</a>
+              </span>
+            </div>
+            
+            <div id="recipientsInfoSelected" style="display: none;">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted" id="schedulerRecipientsHeader" style="cursor: pointer;" onclick="toggleSchedulerRecipientsList(event)">
+                  Выбрано получателей: <strong id="schedulerRecipientsCount">0</strong>
+                  <i class="bi bi-chevron-down ms-1" id="schedulerRecipientsArrow"></i>
+                </span>
+              </div>
+              
+              <div id="schedulerRecipientsList" class="mt-2 p-3 bg-light border rounded" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h6 class="mb-0"><i class="bi bi-people-fill"></i> Список выбранных</h6>
+                  <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearSchedulerSelected()">
+                    <i class="bi bi-trash"></i> Очистить всех
+                  </button>
+                </div>
+                <div id="schedulerRecipientsContent" class="d-flex flex-wrap gap-2" style="max-height: 250px; overflow-y: auto;">
+                </div>
+              </div>
+            </div>
+            <input type="hidden" id="scheduleRecipients" />
+          </div>
+
+          <button type="submit" class="btn btn-success" id="createTaskBtn">
+            <i class="bi bi-check-circle"></i> Создать задачу
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-list-task"></i> Активные задачи</span>
+        <button class="btn btn-sm btn-outline-primary" onclick="loadTasks()">
+          <i class="bi bi-arrow-clockwise"></i> Обновить
+        </button>
+      </div>
+      <div class="card-body">
+        <div id="tasksList">
+          <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Загрузка...</span>
+            </div>
+            <p class="mt-3 text-muted">Загрузка задач...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-check2-circle"></i> Выполненные задачи</span>
+        <button class="btn btn-sm btn-outline-success" onclick="loadCompletedTasks()">
+          <i class="bi bi-arrow-clockwise"></i> Обновить
+        </button>
+      </div>
+      <div class="card-body">
+        <div id="completedTasksList">
+          <div class="text-center py-5">
+            <div class="spinner-border text-success" role="status">
+              <span class="visually-hidden">Загрузка...</span>
+            </div>
+            <p class="mt-3 text-muted">Загрузка выполненных задач...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} 
+
+{% block extra_js %}
+<script>
+  // State management
+  let schedulerSelectedImages = [];
+  let schedulerSelectedImagesData = [];
+  let schedulerSelectedRecipients = [];
+  let schedulerTimeSlots = [];
+  let schedulerGroupTopics = {};
+  let schedulerCurrentTopicGroupId = null;
+
+  document.addEventListener("DOMContentLoaded", function () {
+    startDateTimeUpdater('dateDisplay', 'timeDisplay');
+    
+    // 1. Сначала восстанавливаем данные из sessionStorage
+    const savedMessage = sessionStorage.getItem("scheduledMessage");
+    const savedRecipients = sessionStorage.getItem("scheduledRecipients");
+    const savedRecipientsInfo = sessionStorage.getItem("scheduledRecipientsInfo");
+    const savedImagesData = sessionStorage.getItem("scheduledImagesData");
+
+    if (savedMessage) {
+      document.getElementById("scheduleMessage").value = savedMessage;
+    }
+
+    if (savedRecipients && savedRecipientsInfo) {
+      try {
+        const recipients = JSON.parse(savedRecipients);
+        const recipientsInfo = JSON.parse(savedRecipientsInfo);
+        
+        if (recipients.length > 0) {
+          document.getElementById("scheduleRecipients").value = savedRecipients;
+          window.schedulerRecipientsInfo = recipientsInfo;
+          
+          document.getElementById("recipientsInfoEmpty").style.display = 'none';
+          document.getElementById("recipientsInfoSelected").style.display = 'block';
+          document.getElementById("schedulerRecipientsCount").textContent = recipients.length;
+          
+          // Важно: Список скрыт по умолчанию, но мы его наполняем
+          updateSchedulerRecipientsList();
+          
+          // Раскрываем список сразу, чтобы пользователь видел результат
+          const listDiv = document.getElementById("schedulerRecipientsList");
+          const arrow = document.getElementById("schedulerRecipientsArrow");
+          if (listDiv && arrow) {
+            listDiv.style.display = 'block';
+            arrow.className = 'bi bi-chevron-up ms-1';
+          }
+        }
+      } catch (e) {
+        console.error("Error parsing recipients from session:", e);
+      }
+    }
+
+    if (savedImagesData) {
+      try {
+        const imagesInfo = JSON.parse(savedImagesData);
+        imagesInfo.forEach(imgInfo => {
+          const byteString = atob(imgInfo.data.split(',')[1]);
+          const mimeString = imgInfo.data.split(',')[0].split(':')[1].split(';')[0];
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+          }
+          const blob = new Blob([ab], { type: mimeString });
+          const file = new File([blob], imgInfo.name, { type: mimeString });
+          schedulerSelectedImages.push(file);
+          schedulerSelectedImagesData.push(imgInfo.data);
+        });
+        updateSchedulerImagesPreview();
+      } catch (err) {
+        console.error("Error restoring images:", err);
+      }
+    }
+
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 5);
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const defaultDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+    
+    const nowMin = new Date();
+    const minYear = nowMin.getFullYear();
+    const minMonth = String(nowMin.getMonth() + 1).padStart(2, '0');
+    const minDay = String(nowMin.getDate()).padStart(2, '0');
+    const minHours = String(nowMin.getHours()).padStart(2, '0');
+    const minMinutes = String(nowMin.getMinutes()).padStart(2, '0');
+    const minDateTime = `${minYear}-${minMonth}-${minDay}T${minHours}:${minMinutes}`;
+    
+    document.querySelector('.scheduled-datetime').value = defaultDateTime;
+    document.querySelector('.scheduled-datetime').min = minDateTime;
+
+    loadTasks();
+    loadCompletedTasks();
+  });
+
+  document.getElementById('scheduleImages').addEventListener('change', function(e) {
+    const files = Array.from(e.target.files);
+    
+    files.forEach(file => {
+      if (schedulerSelectedImages.length >= 10) return;
+      
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        schedulerSelectedImages.push(file);
+        schedulerSelectedImagesData.push(event.target.result);
+        updateSchedulerImagesPreview();
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    e.target.value = '';
+  });
+
+  function updateSchedulerImagesPreview() {
+    const previewContainer = document.getElementById('imagePreview');
+    const clearBtn = document.getElementById('clearImagesBtn');
+    const countInfo = document.getElementById('imagesCountInfo');
+    const positionContainer = document.getElementById('imagePositionContainer');
+    previewContainer.innerHTML = '';
+    
+    if (schedulerSelectedImages.length > 0) {
+      previewContainer.style.display = 'flex';
+      clearBtn.style.display = 'block';
+      countInfo.style.display = 'block';
+      positionContainer.style.display = 'block';
+      countInfo.textContent = `Выбрано изображений: ${schedulerSelectedImages.length}/10`;
+      
+      schedulerSelectedImagesData.forEach((dataUrl, index) => {
+        const imgWrapper = document.createElement('div');
+        imgWrapper.className = 'position-relative';
+        imgWrapper.innerHTML = `
+          <img src="${dataUrl}" alt="Preview ${index + 1}" style="max-width: 100px; max-height: 100px;" class="rounded border">
+          <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">${index + 1}</span>
+          <button type="button" class="btn btn-sm btn-danger position-absolute bottom-0 start-50 translate-middle-x" style="padding: 0.1rem 0.3rem; font-size: 0.7rem;" onclick="removeSchedulerImage(${index})">
+            <i class="bi bi-x"></i>
+          </button>
+        `;
+        previewContainer.appendChild(imgWrapper);
+      });
+    } else {
+      previewContainer.style.display = 'none';
+      clearBtn.style.display = 'none';
+      countInfo.style.display = 'none';
+      positionContainer.style.display = 'none';
+    }
+  }
+
+  function removeSchedulerImage(index) {
+    schedulerSelectedImages.splice(index, 1);
+    schedulerSelectedImagesData.splice(index, 1);
+    updateSchedulerImagesPreview();
+  }
+
+  function removeAllImages() {
+    schedulerSelectedImages = [];
+    schedulerSelectedImagesData = [];
+    document.getElementById('scheduleImages').value = '';
+    updateSchedulerImagesPreview();
+  }
+
+  function addScheduledTime() {
+    const container = document.getElementById('scheduledTimes');
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 5);
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const defaultDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+    
+    const nowMin = new Date();
+    const minYear = nowMin.getFullYear();
+    const minMonth = String(nowMin.getMonth() + 1).padStart(2, '0');
+    const minDay = String(nowMin.getDate()).padStart(2, '0');
+    const minHours = String(nowMin.getHours()).padStart(2, '0');
+    const minMinutes = String(nowMin.getMinutes()).padStart(2, '0');
+    const minDateTime = `${minYear}-${minMonth}-${minDay}T${minHours}:${minMinutes}`;
+    
+    const newRow = document.createElement('div');
+    newRow.className = 'scheduled-time-row mb-2';
+    newRow.innerHTML = `
+      <div class="input-group">
+        <input type="datetime-local" class="form-control scheduled-datetime" value="${defaultDateTime}" min="${minDateTime}" required>
+        <button type="button" class="btn btn-outline-danger remove-time-btn" onclick="removeScheduledTime(this)">
+          <i class="bi bi-trash"></i>
+        </button>
+      </div>
+    `;
+    container.appendChild(newRow);
+    
+    updateRemoveButtons();
+  }
+
+  function removeScheduledTime(btn) {
+    btn.closest('.scheduled-time-row').remove();
+    updateRemoveButtons();
+  }
+
+  function updateRemoveButtons() {
+    const rows = document.querySelectorAll('.scheduled-time-row');
+    rows.forEach((row, index) => {
+      const btn = row.querySelector('.remove-time-btn');
+      if (btn) {
+        btn.style.display = rows.length > 1 ? 'block' : 'none';
+      }
+    });
+  }
+
+  function getScheduledTimes() {
+    const inputs = document.querySelectorAll('.scheduled-datetime');
+    const times = [];
+    inputs.forEach(input => {
+      if (input.value) {
+        times.push(input.value);
+      }
+    });
+    return times;
+  }
+
+  document.getElementById("scheduleForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    const message = document.getElementById("scheduleMessage").value.trim();
+    const scheduledTimes = getScheduledTimes();
+    const recipientsStr = document.getElementById("scheduleRecipients").value;
+
+    if (!message) {
+      showAlert("Введите текст сообщения", "warning");
+      return;
+    }
+
+    if (scheduledTimes.length === 0) {
+      showAlert("Добавьте хотя бы одну дату и время отправки", "warning");
+      return;
+    }
+
+    if (!recipientsStr) {
+      showAlert("Выберите получателей на странице контактов", "warning");
+      return;
+    }
+
+    const recipients = JSON.parse(recipientsStr);
+    const createBtn = document.getElementById("createTaskBtn");
+    createBtn.disabled = true;
+    createBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Создание...';
+
+    try {
+      const formData = new FormData();
+      formData.append('message', message);
+      formData.append('recipients', JSON.stringify(recipients));
+      formData.append('scheduled_times', JSON.stringify(scheduledTimes));
+      formData.append('tz_offset', -new Date().getTimezoneOffset());
+      if (window.schedulerRecipientsInfo) {
+        formData.append('recipients_info', JSON.stringify(window.schedulerRecipientsInfo));
+      }
+      schedulerSelectedImages.forEach(file => {
+        formData.append('images[]', file);
+      });
+      
+      const imagePosition = document.querySelector('input[name="imagePosition"]:checked');
+      if (imagePosition && schedulerSelectedImages.length > 0) {
+        formData.append('image_position', imagePosition.value);
+      }
+
+      const response = await fetch("/api/scheduler/create", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showAlert("Задача успешно создана!", "success");
+        
+        document.getElementById("scheduleMessage").value = "";
+        sessionStorage.removeItem("scheduledMessage");
+        
+        const recipientsInput = document.getElementById("scheduleRecipients");
+        if (recipientsInput) recipientsInput.value = "";
+        sessionStorage.removeItem("scheduledRecipients");
+        sessionStorage.removeItem("scheduledRecipientsInfo");
+        
+        document.getElementById("recipientsInfoEmpty").style.display = 'block';
+        document.getElementById("recipientsInfoSelected").style.display = 'none';
+        document.getElementById("schedulerRecipientsList").style.display = 'none';
+        document.getElementById("schedulerRecipientsArrow").className = 'bi bi-chevron-down ms-1';
+        
+        removeAllImages();
+        sessionStorage.removeItem("scheduledImagesData");
+        window.schedulerRecipientsInfo = null;
+        
+        const now = new Date();
+        now.setMinutes(now.getMinutes() + 5);
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const defaultDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+        
+        const nowMin = new Date();
+        const minYear = nowMin.getFullYear();
+        const minMonth = String(nowMin.getMonth() + 1).padStart(2, '0');
+        const minDay = String(nowMin.getDate()).padStart(2, '0');
+        const minHours = String(nowMin.getHours()).padStart(2, '0');
+        const minMinutes = String(nowMin.getMinutes()).padStart(2, '0');
+        const minDateTime = `${minYear}-${minMonth}-${minDay}T${minHours}:${minMinutes}`;
+        
+        const container = document.getElementById('scheduledTimes');
+        if (container) {
+          container.innerHTML = `
+            <div class="scheduled-time-row mb-2">
+              <div class="input-group">
+                <input type="datetime-local" class="form-control scheduled-datetime" value="${defaultDateTime}" min="${minDateTime}" required>
+                <button type="button" class="btn btn-outline-danger remove-time-btn" style="display: none;">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            </div>
+          `;
+        }
+        
+        loadTasks();
+      } else {
+        showAlert("Ошибка: " + data.error, "danger");
+      }
+    } catch (error) {
+      showAlert("Ошибка создания задачи: " + error.message, "danger");
+    } finally {
+      createBtn.disabled = false;
+      createBtn.innerHTML = '<i class="bi bi-check-circle"></i> Создать задачу';
+    }
+  });
+
+  function renderRecipientsStatus(recipientsInfo) {
+    if (!recipientsInfo || !recipientsInfo.length) return '<p class="text-muted small mb-0">Список получателей пуст</p>';
+    
+    let html = '<div class="list-group list-group-flush">';
+    recipientsInfo.forEach(r => {
+      let icon = 'bi-clock-history';
+      let color = 'text-secondary';
+      let statusLabel = 'Ожидает';
+      
+      // The API returns recipient status in 'status' field
+      // We check for 'status' or fall back to 'pending'
+      const status = r.status || 'pending';
+      const error = r.error || null;
+      const name = r.name || r.id || r.recipient_id || 'Unknown';
+      
+      if (status === 'sent') {
+        icon = 'bi-check-circle-fill';
+        color = 'text-success';
+        statusLabel = 'Отправлено';
+      } else if (status === 'failed') {
+        icon = 'bi-exclamation-circle-fill';
+        color = 'text-danger';
+        statusLabel = 'Ошибка';
+      } else if (status === 'cancelled') {
+        icon = 'bi-x-circle-fill';
+        color = 'text-warning';
+        statusLabel = 'Отменено';
+      }
+      
+      const errorText = error ? ` — ${error}` : '';
+      
+      html += `
+        <div class="list-group-item bg-transparent d-flex align-items-center py-1 px-0 border-0 small">
+          <i class="bi ${icon} ${color} me-2" title="${statusLabel}${errorText}"></i>
+          <span class="text-truncate flex-grow-1" style="max-width: 200px;">
+            <strong>${UIUtils.escapeHtml(name)}</strong> — <span class="${color}">${statusLabel}${UIUtils.escapeHtml(errorText)}</span>
+          </span>
+        </div>
+      `;
+    });
+    html += '</div>';
+    return html;
+  }
+
+  async function loadTasks() {
+    try {
+      const response = await fetch("/api/scheduler/tasks");
+      const data = await response.json();
+
+      if (data.success) {
+        displayTasks(data.tasks);
+      } else {
+        showAlert("Ошибка загрузки задач: " + data.error, "danger");
+      }
+    } catch (error) {
+      showAlert("Ошибка загрузки задач: " + error.message, "danger");
+    }
+  }
+
+  function displayTasks(tasks) {
+    const container = document.getElementById("tasksList");
+
+    if (tasks.length === 0) {
+      container.innerHTML = '<p class="text-center text-muted py-5">Нет активных задач</p>';
+      return;
+    }
+
+    let html = '<div class="accordion" id="tasksAccordion">';
+
+    tasks.forEach((task, index) => {
+      const messagePreview = task.message_text.length > 50 
+        ? task.message_text.substring(0, 50) + "..." 
+        : task.message_text;
+
+      const tgAccount = task.telegram_account || 'Неизвестно';
+      const recipientsHtml = renderRecipientsStatus(task.recipients_info);
+      
+      let slotsHtml = '';
+      if (task.slots && task.slots.length > 0) {
+        task.slots.forEach(slot => {
+          const date = TimezoneManager.formatLocalDateTime(slot.datetime);
+          const progressWidth = slot.percentage || 0;
+          let statusBadge = '';
+          
+          switch(slot.status) {
+            case 'pending': statusBadge = '<span class="badge bg-secondary">Ожидает</span>'; break;
+            case 'executing': statusBadge = '<span class="badge bg-primary">Выполняется</span>'; break;
+            case 'completed': statusBadge = '<span class="badge bg-success">Завершено</span>'; break;
+            case 'cancelled': statusBadge = '<span class="badge bg-warning text-dark">Отменено</span>'; break;
+            case 'failed': statusBadge = '<span class="badge bg-danger">Ошибка</span>'; break;
+            default: statusBadge = `<span class="badge bg-info">${slot.status}</span>`;
+          }
+
+          slotsHtml += `
+            <div class="mb-3 p-2 border-bottom">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <small class="text-muted">${date}</small>
+                ${statusBadge}
+              </div>
+              <div class="progress" style="height: 10px;">
+                <div class="progress-bar progress-bar-striped ${slot.status === 'executing' ? 'progress-bar-animated' : ''}" 
+                     role="progressbar" style="width: ${progressWidth}%"></div>
+              </div>
+              <div class="d-flex justify-content-between mt-1">
+                <small class="text-muted">Прогресс: ${slot.processed}/${slot.total}</small>
+                <small class="fw-bold">${progressWidth}%</small>
+              </div>
+            </div>
+          `;
+        });
+      } else {
+        slotsHtml = '<p class="text-muted small">Нет запланированных слотов</p>';
+      }
+
+      html += `
+        <div class="accordion-item">
+          <h2 class="accordion-header">
+            <button class="accordion-button ${index > 0 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#task${task.id}">
+              <div class="d-flex justify-content-between align-items-center w-100 me-3">
+                <span>
+                  <strong>#${task.display_id || task.id}</strong> - ${escapeHtml(messagePreview)}
+                  ${task.has_image ? '<i class="bi bi-image text-primary ms-2"></i>' : ''}
+                  <span class="ms-2 badge bg-info text-dark" style="font-size: 0.7rem;">
+                    <i class="bi bi-person"></i> ${tgAccount}
+                  </span>
+                </span>
+              </div>
+            </button>
+          </h2>
+          <div id="task${task.id}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" data-bs-parent="#tasksAccordion">
+            <div class="accordion-body">
+              <div class="mb-3">
+                <h6><i class="bi bi-clock-history"></i> Слоты рассылки:</h6>
+                ${slotsHtml}
+                
+                <h6 class="mt-3"><i class="bi bi-chat-dots"></i> Текст сообщения:</h6>
+                <div class="p-2 bg-light border rounded mb-3" style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(task.message_text)}</div>
+                
+                <h6 class="mt-3"><i class="bi bi-people"></i> Статус получателей:</h6>
+                <div class="recipients-status-list border rounded p-2 bg-light mb-3" style="max-height: 200px; overflow-y: auto;">
+                  ${recipientsHtml}
+                </div>
+              </div>
+              <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-sm btn-outline-danger" onclick="cancelTask(${task.id})">
+                  <i class="bi bi-x-circle"></i> Отменить задачу
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  async function cancelTask(taskId) {
+    if (!confirm("Вы уверены, что хотите отменить эту задачу? Рассылка прекратится немедленно.")) return;
+    
+    try {
+      const response = await fetch(`/api/scheduler/task/${taskId}/cancel`, {
+        method: "POST",
+        headers: { 
+          'X-CSRF-Token': ApiClient.getCsrfToken(),
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await response.json();
+      if (data.success) {
+        showAlert("Задача отменена", "info");
+        loadTasks();
+      } else {
+        showAlert("Ошибка: " + data.error, "danger");
+      }
+    } catch (error) {
+      showAlert("Ошибка сети", "danger");
+    }
+  }
+
+  async function deleteTask(taskId) {
+    if (!confirm("Удалить эту задачу?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/scheduler/delete/${taskId}`, {
+        method: "DELETE",
+        headers: {
+          'X-CSRF-Token': ApiClient.getCsrfToken()
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showAlert("Задача удалена", "success");
+        
+        // Remove from Active Tasks UI
+        const taskElement = document.getElementById(`task${taskId}`);
+        if (taskElement) {
+          const accordionItem = taskElement.closest('.accordion-item');
+          if (accordionItem) accordionItem.remove();
+        }
+        
+        // Remove from Completed Tasks UI
+        const compTaskElement = document.getElementById(`compTask${taskId}`);
+        if (compTaskElement) {
+          const accordionItem = compTaskElement.closest('.accordion-item');
+          if (accordionItem) accordionItem.remove();
+        }
+        
+        // Refresh lists if empty
+        const activeContainer = document.getElementById("tasksList");
+        if (activeContainer && activeContainer.querySelectorAll('.accordion-item').length === 0) {
+          activeContainer.innerHTML = '<p class="text-center text-muted py-5">Нет активных задач</p>';
+        }
+        
+        const completedContainer = document.getElementById("completedTasksList");
+        if (completedContainer && completedContainer.querySelectorAll('.accordion-item').length === 0) {
+          completedContainer.innerHTML = '<p class="text-center text-muted py-5">Нет выполненных задач</p>';
+        }
+
+      } else {
+        showAlert("Ошибка: " + data.error, "danger");
+      }
+    } catch (error) {
+      showAlert("Ошибка удаления задачи: " + error.message, "danger");
+    }
+  }
+
+  function formatDate(dateString) {
+    return TimezoneManager.formatLocalDateTime(dateString);
+  }
+
+  function renderTimeSlots(slots) {
+    if (!slots || slots.length === 0) return '';
+    let html = '<p><strong>Даты отправки:</strong></p><ul class="list-group list-group-flush">';
+    slots.forEach(function(slot) {
+      const itemClass = slot.is_sent ? (slot.has_error ? 'list-group-item-danger' : 'list-group-item-success') : 'list-group-item-secondary';
+      const badge = slot.is_sent 
+        ? (slot.has_error ? '<span class="badge bg-danger float-end">Ошибка</span>' : '<span class="badge bg-success float-end">Отправлено</span>')
+        : '<span class="badge bg-secondary float-end">Не отправлено</span>';
+      
+      const dateVal = slot.datetime || slot.scheduled_datetime || slot.scheduled_at;
+      html += '<li class="list-group-item d-flex justify-content-between align-items-center">' + 
+              '<span>' + formatDate(dateVal) + '</span>' + badge + '</li>';
+    });
+    html += '</ul>';
+    return html;
+  }
+
+  function toggleSchedulerRecipientsList(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    const listDiv = document.getElementById("schedulerRecipientsList");
+    const arrow = document.getElementById("schedulerRecipientsArrow");
+    
+    if (!arrow || !listDiv) return;
+    
+    if (listDiv.style.display === 'none') {
+      listDiv.style.display = 'block';
+      arrow.className = 'bi bi-chevron-up ms-1';
+    } else {
+      listDiv.style.display = 'none';
+      arrow.className = 'bi bi-chevron-down ms-1';
+    }
+  }
+  
+  function updateSchedulerRecipientsList() {
+    const content = document.getElementById("schedulerRecipientsContent");
+    const recipientsInfo = window.schedulerRecipientsInfo;
+    
+    if (!content) return;
+    
+    content.innerHTML = renderRecipientBadges(recipientsInfo, 'removeSchedulerRecipient');
+  }
+
+  function removeSchedulerRecipient(index) {
+    if (!window.schedulerRecipientsInfo) return;
+    
+    window.schedulerRecipientsInfo.splice(index, 1);
+    
+    // Update IDs array too
+    const recipientsIds = window.schedulerRecipientsInfo.map(r => r.id);
+    
+    // Sync with session storage
+    sessionStorage.setItem("scheduledRecipients", JSON.stringify(recipientsIds));
+    sessionStorage.setItem("scheduledRecipientsInfo", JSON.stringify(window.schedulerRecipientsInfo));
+    
+    document.getElementById("scheduleRecipients").value = JSON.stringify(recipientsIds);
+    document.getElementById("schedulerRecipientsCount").textContent = window.schedulerRecipientsInfo.length;
+    
+    if (window.schedulerRecipientsInfo.length === 0) {
+      document.getElementById("recipientsInfoEmpty").style.display = 'block';
+      document.getElementById("recipientsInfoSelected").style.display = 'none';
+      document.getElementById("schedulerRecipientsList").style.display = 'none';
+    } else {
+      updateSchedulerRecipientsList();
+    }
+  }
+
+  function clearSchedulerSelected() {
+    if (!confirm('Вы уверены, что хотите очистить список получателей?')) return;
+    
+    window.schedulerRecipientsInfo = [];
+    sessionStorage.removeItem("scheduledRecipients");
+    sessionStorage.removeItem("scheduledRecipientsInfo");
+    
+    document.getElementById("scheduleRecipients").value = "";
+    document.getElementById("schedulerRecipientsCount").textContent = "0";
+    document.getElementById("recipientsInfoEmpty").style.display = 'block';
+    document.getElementById("recipientsInfoSelected").style.display = 'none';
+    document.getElementById("schedulerRecipientsList").style.display = 'none';
+  }
+
+  function renderRecipientsInfo(recipientsInfo, isManual = false) {
+    if (!recipientsInfo || recipientsInfo.length === 0) {
+      if (isManual) {
+        return '';
+      }
+      return '<p><strong>Получатели:</strong> <span class="text-muted">Информация недоступна (старая задача)</span></p>';
+    }
+    
+    let html = '<p><strong>Получатели (в порядке отправки):</strong></p><ul class="list-group list-group-flush small" style="max-height: 200px; overflow-y: auto;">';
+    let orderNum = 1;
+    recipientsInfo.forEach(function(recipient) {
+      let icon = 'bi-person';
+      let badgeClass = 'bg-secondary';
+      let typeName = 'Контакт';
+      
+      if (recipient.type === 'group') {
+        icon = 'bi-people-fill';
+        badgeClass = 'bg-primary';
+        typeName = 'Группа';
+      } else if (recipient.type === 'channel') {
+        icon = 'bi-broadcast';
+        badgeClass = 'bg-info';
+        typeName = 'Канал';
+      }
+      
+      let topicInfo = '';
+      if (recipient.topic_name) {
+        topicInfo = ` <span class="badge bg-warning text-dark"><i class="bi bi-chat-left-text"></i> ${escapeHtml(recipient.topic_name)}</span>`;
+      }
+      
+      let sentAtInfo = '';
+      let statusBadge = '';
+      let itemClass = '';
+      if (recipient.sent_at && recipient.status === 'sent') {
+        statusBadge = '<span class="badge bg-success ms-1">Выполнено</span>';
+        sentAtInfo = ` <span class="text-muted small"><i class="bi bi-clock"></i> ${formatDate(recipient.sent_at)}</span>`;
+        itemClass = 'list-group-item-success';
+      } else if (recipient.status === 'failed') {
+        statusBadge = '<span class="badge bg-danger ms-1">Ошибка</span>';
+        itemClass = 'list-group-item-danger';
+      } else {
+        statusBadge = '<span class="badge bg-secondary ms-1">Не отправлено</span>';
+      }
+      
+      html += `<li class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center">
+        <div>
+          <span class="badge bg-dark me-1">${orderNum}</span>
+          <i class="bi ${icon} me-1"></i>
+          <span>${escapeHtml(recipient.name)}</span>
+          <span class="badge ${badgeClass} ms-1">${typeName}</span>
+          ${topicInfo}
+          ${statusBadge}
+        </div>
+        ${sentAtInfo}
+      </li>`;
+      orderNum++;
+    });
+    html += '</ul>';
+    return html;
+  }
+
+  async function loadCompletedTasks() {
+    try {
+      const response = await fetch("/api/scheduler/completed");
+      const data = await response.json();
+
+      if (data.success) {
+        displayCompletedTasks(data.tasks);
+      } else {
+        showAlert("Ошибка загрузки выполненных задач: " + data.error, "danger");
+      }
+    } catch (error) {
+      showAlert("Ошибка загрузки выполненных задач: " + error.message, "danger");
+    }
+  }
+
+  function displayCompletedTasks(tasks) {
+    const container = document.getElementById("completedTasksList");
+
+    if (tasks.length === 0) {
+      container.innerHTML = '<p class="text-center text-muted py-5">Нет выполненных задач</p>';
+      return;
+    }
+
+    let html = '<div class="accordion" id="completedTasksAccordion">';
+
+    tasks.forEach((task, index) => {
+      // Use the global_order assigned by backend if available
+      const displayIndex = task.global_order || (tasks.length - index);
+      const messagePreview = task.message_text.length > 50 
+        ? task.message_text.substring(0, 50) + "..." 
+        : task.message_text;
+      
+      const recipientsHtml = renderRecipientsStatus(task.recipients_info);
+      
+      let statusBadge = '';
+      let typeBadge = '';
+      const tgAccount = task.telegram_username || task.telegram_account || 'Неизвестно';
+      
+      // Generate display ID (sequential number 1, 2, 3...)
+      let displayId = `<strong>#${displayIndex}</strong> - `;
+      
+      if (task.is_scheduled === false) {
+        typeBadge = '<span class="badge bg-info ms-2">Ручная отправка</span>';
+        if (task.success_count === 0) {
+          statusBadge = '<span class="badge bg-danger ms-2"><i class="bi bi-exclamation-triangle"></i> Ошибка</span>';
+        } else if (task.success_count < task.recipients_count) {
+          statusBadge = '<span class="badge bg-warning ms-2"><i class="bi bi-exclamation-circle"></i> Частично</span>';
+        } else {
+          statusBadge = '<span class="badge bg-success ms-2"><i class="bi bi-check-all"></i> Доставлено</span>';
+        }
+      } else {
+        typeBadge = '<span class="badge bg-primary ms-2">Запланированная</span>';
+        if (task.status === 'cancelled') {
+          statusBadge = '<span class="badge bg-warning text-dark ms-2"><i class="bi bi-x-circle"></i> Отменено</span>';
+        } else if (task.status === 'completed' || task.status === 'sent') {
+          statusBadge = '<span class="badge bg-success ms-2"><i class="bi bi-check-all"></i> Завершено</span>';
+        } else if (task.status === 'failed') {
+          statusBadge = '<span class="badge bg-danger ms-2"><i class="bi bi-exclamation-triangle"></i> Ошибка</span>';
+        } else {
+          statusBadge = `<span class="badge bg-secondary ms-2"><i class="bi bi-hourglass-split"></i> ${task.status}</span>`;
+        }
+      }
+
+      let successInfo = '';
+      if (task.status === 'cancelled') {
+        successInfo = `<p><strong>Статус:</strong> <span class="badge bg-warning text-dark"><i class="bi bi-x-circle"></i> Отменено пользователем</span></p>`;
+      } else if (task.status === 'failed' && (!task.success_count || task.success_count === 0)) {
+        successInfo = `<p><strong>Статус:</strong> <span class="badge bg-danger">Ошибка отправки (проверьте сессию)</span></p>`;
+      } else if (task.success_count !== undefined) {
+        let badgeColor = 'bg-success';
+        let statusText = 'Успешно отправлено';
+        if (task.success_count === 0) {
+          badgeColor = 'bg-danger';
+          statusText = 'Ошибка отправки';
+        } else if (task.success_count < task.recipients_count) {
+          badgeColor = 'bg-warning';
+          statusText = 'Частично отправлено';
+        }
+        successInfo = `<p><strong>${statusText}:</strong> <span class="badge ${badgeColor}">${task.success_count}/${task.recipients_count}</span></p>`;
+      }
+
+      const completedRecipientsHtml = (task.recipients_info && task.recipients_info.length > 0) ? renderRecipientsInfo(task.recipients_info, false) : '<p class="text-muted small">Детальная информация о получателях недоступна</p>';
+
+      html += `
+        <div class="accordion-item">
+          <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#compTask${task.id}">
+              <div class="d-flex justify-content-between align-items-center w-100 me-3">
+                <span>
+                  <strong>#${task.global_order || task.id}</strong> - ${escapeHtml(messagePreview)}
+                  <span class="ms-2 badge bg-secondary" style="font-size: 0.7rem;">${task.telegram_account}</span>
+                </span>
+                <span class="badge ${task.status === 'completed' ? 'bg-success' : 'bg-warning'}">${task.success_count}/${task.recipients_count}</span>
+              </div>
+            </button>
+          </h2>
+          <div id="compTask${task.id}" class="accordion-collapse collapse" data-bs-parent="#completedAccordion">
+            <div class="accordion-body">
+              <div class="row">
+                <div class="col-md-7">
+                  <p><strong>Создана:</strong> ${formatDate(task.created_at)}</p>
+                  <p><strong>Завершена:</strong> ${formatDate(task.completed_at) || 'N/A'}</p>
+                  <h6 class="mt-3"><i class="bi bi-chat-dots"></i> Текст сообщения:</h6>
+                  <div class="p-2 bg-light border rounded mb-3" style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(task.message_text)}</div>
+                </div>
+                <div class="col-md-5 border-start">
+                  <h6><i class="bi bi-people"></i> Статус получателей:</h6>
+                  <div class="recipients-status-list border rounded p-2 bg-white" style="max-height: 300px; overflow-y: auto;">
+                    ${recipientsHtml}
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex justify-content-end mt-3">
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteTask(${task.id})">
+                  <i class="bi bi-trash"></i> Удалить из истории
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+  }
+</script>
+{% endblock %}

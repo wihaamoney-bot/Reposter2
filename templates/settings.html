@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Настройки{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-gear"></i> Настройки системы</h2>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-hdd"></i> Очистка кэша изображений
+            </div>
+            <div class="card-body">
+                <p>Все отправляемые изображения сохраняются на сервере. Чтобы сэкономить место, рекомендуется периодически очищать кэш.</p>
+                <div class="alert alert-info small">
+                    <i class="bi bi-info-circle"></i> Автоматическая очистка: 
+                    <strong>раз в {{ config.cleanup.image_cache_days }} дня</strong>
+                </div>
+                <button class="btn btn-warning" onclick="cleanupCache()">
+                    <i class="bi bi-trash"></i> Очистить кэш вручную сейчас
+                </button>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-journal-check"></i> Очистка выполненных задач
+            </div>
+            <div class="card-body">
+                <p>Выполненные задачи занимают место в базе данных. Вы можете удалить старые задачи для поддержания чистоты списка.</p>
+                <div class="alert alert-info small">
+                    <i class="bi bi-info-circle"></i> Автоматическая очистка задач старше: 
+                    <strong>{{ config.cleanup.completed_tasks_months }} месяц(а)</strong>
+                </div>
+                <button class="btn btn-danger" onclick="cleanupTasks()">
+                    <i class="bi bi-trash"></i> Удалить все выполненные задачи
+                </button>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-header bg-danger text-white">
+                <i class="bi bi-person-x"></i> Управление текущей сессией
+            </div>
+            <div class="card-body">
+                <p>Если у вас возникли проблемы с подключением или вы хотите принудительно завершить текущую сессию Telegram на этом сервере, используйте эту кнопку. <strong>Внимание:</strong> это удалит только локальный файл сессии, вы не выйдете из аккаунта во всех устройствах.</p>
+                <button class="btn btn-outline-danger" onclick="deleteCurrentSession()">
+                    <i class="bi bi-shield-lock"></i> Удалить текущую сессию
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function deleteCurrentSession() {
+    if (!confirm('Вы уверены, что хотите удалить текущую сессию Telegram? Вам придется заново пройти авторизацию.')) return;
+    
+    try {
+        const response = await fetch('/api/telegram/delete_session', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+            showAlert(data.message || 'Сессия успешно удалена. Перенаправление...', 'success');
+            setTimeout(() => window.location.href = '/telegram_auth', 2000);
+        } else {
+            showAlert('Ошибка: ' + data.error, 'danger');
+        }
+    } catch (e) {
+        showAlert('Ошибка: ' + e.message, 'danger');
+    }
+}
+async function cleanupCache() {
+    if (!confirm('Вы уверены, что хотите удалить все сохраненные изображения?')) return;
+    
+    try {
+        const response = await fetch('/api/settings/cleanup_cache', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+            showAlert(data.message, 'success');
+        } else {
+            showAlert('Ошибка: ' + data.error, 'danger');
+        }
+    } catch (e) {
+        showAlert('Ошибка: ' + e.message, 'danger');
+    }
+}
+
+async function cleanupTasks() {
+    if (!confirm('Вы уверены, что хотите безвозвратно удалить все ваши выполненные задачи?')) return;
+    
+    try {
+        const response = await fetch('/api/settings/cleanup_tasks', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+            showAlert(data.message, 'success');
+        } else {
+            showAlert('Ошибка: ' + data.error, 'danger');
+        }
+    } catch (e) {
+        showAlert('Ошибка: ' + e.message, 'danger');
+    }
+}
+</script>
+{% endblock %}

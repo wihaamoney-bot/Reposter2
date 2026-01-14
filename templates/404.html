@@ -1,0 +1,20 @@
+{% extends "base.html" %} {% block title %}404 - Страница не найдена{% endblock
+%} {% block content %}
+<div
+  class="row justify-content-center align-items-center"
+  style="min-height: 70vh"
+>
+  <div class="col-md-6 text-center">
+    <i
+      class="bi bi-exclamation-triangle"
+      style="font-size: 5rem; color: #ff6b6b"
+    ></i>
+    <h1 class="mt-4">404</h1>
+    <h3>Страница не найдена</h3>
+    <p class="text-muted">Запрашиваемая страница не существует</p>
+    <a href="{{ url_for('index') }}" class="btn btn-primary mt-3">
+      <i class="bi bi-house"></i> Вернуться на главную
+    </a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,475 @@
+/* Telegram Color Scheme */
+:root {
+    --telegram-blue: #0088cc;
+    --telegram-dark: #2c3e50;
+    --telegram-light: #f5f5f5;
+    --telegram-border: #e0e0e0;
+    --telegram-success: #4caf50;
+    --telegram-danger: #f44336;
+    --telegram-warning: #ff9800;
+}
+
+/* General Styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--telegram-light);
+    min-height: 100vh;
+}
+
+/* Navbar */
+.bg-telegram {
+    background: linear-gradient(135deg, #0088cc 0%, #006699 100%) !important;
+}
+
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.5rem;
+}
+
+.navbar-brand i {
+    font-size: 1.8rem;
+    vertical-align: middle;
+}
+
+.nav-link {
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.nav-link:hover {
+    transform: translateY(-2px);
+}
+
+/* Cards */
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    background: linear-gradient(135deg, #0088cc 0%, #006699 100%);
+    color: white;
+    font-weight: 600;
+    border-radius: 12px 12px 0 0 !important;
+    padding: 15px 20px;
+}
+
+/* Buttons */
+.btn-telegram {
+    background: linear-gradient(135deg, #0088cc 0%, #006699 100%);
+    border: none;
+    color: white;
+    font-weight: 500;
+    padding: 10px 20px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.btn-telegram:hover {
+    background: linear-gradient(135deg, #006699 0%, #004d73 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 136, 204, 0.3);
+    color: white;
+}
+
+.btn-telegram:active {
+    transform: translateY(0);
+}
+
+/* Telegram Icon */
+.telegram-icon {
+    font-size: 4rem;
+    color: var(--telegram-blue);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Login Page */
+.min-vh-100 {
+    min-height: 100vh;
+}
+
+/* Input Groups */
+.input-group-text {
+    background-color: white;
+    border-right: none;
+    color: var(--telegram-blue);
+}
+
+.form-control {
+    border-left: none;
+    border-radius: 8px;
+}
+
+.form-control:focus {
+    border-color: var(--telegram-blue);
+    box-shadow: 0 0 0 0.2rem rgba(0, 136, 204, 0.25);
+}
+
+.input-group .form-control {
+    border-left: 1px solid #ced4da;
+}
+
+.input-group-text + .form-control {
+    border-left: none;
+}
+
+/* Tabs */
+.nav-tabs {
+    border-bottom: 2px solid var(--telegram-border);
+}
+
+.nav-tabs .nav-link {
+    color: #666;
+    border: none;
+    border-bottom: 3px solid transparent;
+    font-weight: 500;
+    padding: 12px 20px;
+    transition: all 0.3s ease;
+}
+
+.nav-tabs .nav-link:hover {
+    border-bottom-color: var(--telegram-blue);
+    color: var(--telegram-blue);
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--telegram-blue);
+    background-color: transparent;
+    border-bottom-color: var(--telegram-blue);
+}
+
+.nav-tabs .badge {
+    margin-left: 8px;
+}
+
+/* Entity Items */
+.entity-list {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.entity-item {
+    background: white;
+    border: 1px solid var(--telegram-border);
+    border-radius: 8px;
+    padding: 15px;
+    transition: all 0.3s ease;
+}
+
+.entity-item:hover {
+    background-color: #f8f9fa;
+    border-color: var(--telegram-blue);
+    transform: translateX(5px);
+}
+
+.entity-item .form-check-input {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.entity-item .form-check-input:checked {
+    background-color: var(--telegram-blue);
+    border-color: var(--telegram-blue);
+}
+
+.entity-item label {
+    cursor: pointer;
+    margin-bottom: 0;
+}
+
+/* Alerts */
+.alert {
+    border-radius: 8px;
+    border: none;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.alert-danger {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+/* Tables */
+.table {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.table thead {
+    background-color: #f8f9fa;
+}
+
+.table thead th {
+    border-bottom: 2px solid var(--telegram-border);
+    font-weight: 600;
+    color: var(--telegram-dark);
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Badges */
+.badge {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+/* Progress Bar */
+.progress {
+    height: 25px;
+    border-radius: 8px;
+}
+
+.progress-bar {
+    background: linear-gradient(135deg, #0088cc 0%, #006699 100%);
+}
+
+/* Scrollbar Styling */
+.entity-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.entity-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.entity-list::-webkit-scrollbar-thumb {
+    background: var(--telegram-blue);
+    border-radius: 10px;
+}
+
+.entity-list::-webkit-scrollbar-thumb:hover {
+    background: #006699;
+}
+
+/* Loading Spinner */
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* Text Area */
+textarea.form-control {
+    border-radius: 8px;
+    resize: vertical;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .navbar-brand {
+        font-size: 1.2rem;
+    }
+    
+    .card-body {
+        padding: 15px;
+    }
+    
+    .entity-item {
+        padding: 10px;
+    }
+    
+    .table {
+        font-size: 0.9rem;
+    }
+}
+
+/* Animation for page load */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.card {
+    animation: fadeIn 0.5s ease;
+}
+
+/* Utility Classes */
+.text-telegram {
+    color: var(--telegram-blue);
+}
+
+.bg-telegram-light {
+    background-color: var(--telegram-light);
+}
+
+/* Form Labels */
+.form-label {
+    font-weight: 600;
+    color: var(--telegram-dark);
+    margin-bottom: 8px;
+}
+
+/* Success/Error states */
+.is-valid {
+    border-color: var(--telegram-success) !important;
+}
+
+.is-invalid {
+    border-color: var(--telegram-danger) !important;
+}
+
+/* Custom checkbox styling */
+.form-check-input:checked {
+    background-color: var(--telegram-blue);
+    border-color: var(--telegram-blue);
+}
+
+/* Hover effects for buttons */
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+/* Footer spacing */
+.container {
+    padding-bottom: 40px;
+}
+
+/* Selected Recipients Expandable List */
+#selectedRecipientsHeader {
+    transition: color 0.2s ease;
+}
+
+#selectedRecipientsHeader:hover {
+    color: var(--telegram-blue) !important;
+}
+
+#selectedRecipientsList {
+    background: white;
+    border: 1px solid var(--telegram-border);
+    border-radius: 8px;
+    padding: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+#selectedRecipientsList .list-group-item {
+    border: none;
+    border-bottom: 1px solid var(--telegram-border);
+    background: transparent;
+}
+
+#selectedRecipientsList .list-group-item:last-child {
+    border-bottom: none;
+}
+
+#selectedRecipientsList .list-group-item:hover {
+    background: rgba(0, 136, 204, 0.05);
+}
+
+#selectedRecipientsArrow {
+    transition: transform 0.2s ease;
+}
+
+/* Scrollbar for selected recipients list */
+#selectedRecipientsList::-webkit-scrollbar {
+    width: 6px;
+}
+
+#selectedRecipientsList::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+#selectedRecipientsList::-webkit-scrollbar-thumb {
+    background: var(--telegram-blue);
+    border-radius: 10px;
+}
+
+#selectedRecipientsList::-webkit-scrollbar-thumb:hover {
+    background: #006699;
+}
+
+/* Scheduler Recipients Expandable List */
+#schedulerRecipientsList {
+    background: white;
+    border: 1px solid var(--telegram-border);
+    border-radius: 8px;
+    padding: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+#schedulerRecipientsList .list-group-item {
+    border: none;
+    border-bottom: 1px solid var(--telegram-border);
+    background: transparent;
+}
+
+#schedulerRecipientsList .list-group-item:last-child {
+    border-bottom: none;
+}
+
+#schedulerRecipientsList .list-group-item:hover {
+    background: rgba(0, 136, 204, 0.05);
+}
+
+#schedulerRecipientsList::-webkit-scrollbar {
+    width: 6px;
+}
+
+#schedulerRecipientsList::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+#schedulerRecipientsList::-webkit-scrollbar-thumb {
+    background: var(--telegram-blue);
+    border-radius: 10px;
+}
+
+#schedulerRecipientsList::-webkit-scrollbar-thumb:hover {
+    background: #006699;
+}
