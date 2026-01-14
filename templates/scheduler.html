@@ -476,55 +476,101 @@
     return times;
   }
 
-  document.getElementById("scheduleForm").addEventListener("submit", async function (e) {
-    e.preventDefault();
-
+  // Комплексная валидация перед отправкой
+  function validateScheduleFormComprehensive() {
     const message = document.getElementById("scheduleMessage").value.trim();
-    const scheduledTimes = getScheduledTimes();
-    const recipientsStr = document.getElementById("scheduleRecipients").value;
-
     if (!message) {
       showAlert("Введите текст сообщения", "warning");
-      return;
+      return false;
+    }
+    if (message.length > 4096) {
+      showAlert("Сообщение слишком длинное (максимум 4096 символов)", "warning");
+      return false;
     }
 
-    if (scheduledTimes.length === 0) {
+    const recipientsStr = document.getElementById("scheduleRecipients").value;
+    if (!recipientsStr) {
+      showAlert("Выберите получателей на странице контактов", "warning");
+      return false;
+    }
+
+    try {
+      const recipients = JSON.parse(recipientsStr);
+      if (!Array.isArray(recipients) || recipients.length === 0) {
+        showAlert("Выберите хотя бы одного получателя", "warning");
+        return false;
+      }
+    } catch (e) {
+      showAlert("Ошибка в данных получателей", "warning");
+      return false;
+    }
+
+    const inputs = document.querySelectorAll('.scheduled-datetime');
+    if (inputs.length === 0) {
       showAlert("Добавьте хотя бы одну дату и время отправки", "warning");
-      return;
+      return false;
     }
 
-    // Validate all scheduled times are in the future
-    for (const timeStr of scheduledTimes) {
-      const validation = validateScheduledTime(timeStr);
-      if (!validation.valid) {
-        showAlert("Ошибка времени: " + validation.message, "danger");
-        return;
+    const now = new Date();
+    const minTime = new Date(now.getTime() + 5000);
+
+    for (let i = 0; i < inputs.length; i++) {
+      const value = (inputs[i].value || '').trim();
+      if (!value) {
+        showAlert(`Слот ${i + 1}: укажите дату и время`, "warning");
+        return false;
+      }
+
+      const selectedDateTime = new Date(value + ':00');
+      if (isNaN(selectedDateTime.getTime())) {
+        showAlert(`Слот ${i + 1}: некорректный формат времени "${value}"`, "warning");
+        return false;
+      }
+
+      if (selectedDateTime < minTime) {
+        const currentTime = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const minTimeStr = minTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        showAlert(
+          `Слот ${i + 1}: время в прошлом. Текущее: ${currentTime}. Минимум: ${minTimeStr} (текущий момент + 5 сек)`,
+          "danger"
+        );
+        return false;
       }
     }
 
-    if (!recipientsStr) {
-      showAlert("Выберите получателей на странице контактов", "warning");
+    return true;
+  }
+
+  document.getElementById("scheduleForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    if (!validateScheduleFormComprehensive()) {
       return;
     }
 
-    const recipients = JSON.parse(recipientsStr);
+    const message = document.getElementById("scheduleMessage").value.trim();
+    const recipientsStr = document.getElementById("scheduleRecipients").value;
+    const scheduledTimes = getScheduledTimes();
+
     const createBtn = document.getElementById("createTaskBtn");
     createBtn.disabled = true;
-    createBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Создание...';
+    createBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Создание...';
 
     try {
       const formData = new FormData();
       formData.append('message', message);
-      formData.append('recipients', JSON.stringify(recipients));
+      formData.append('recipients', recipientsStr);
       formData.append('scheduled_times', JSON.stringify(scheduledTimes));
-      formData.append('tz_offset', -new Date().getTimezoneOffset());
+      formData.append('tz_offset', String(-new Date().getTimezoneOffset()));
+
       if (window.schedulerRecipientsInfo) {
         formData.append('recipients_info', JSON.stringify(window.schedulerRecipientsInfo));
       }
+
       schedulerSelectedImages.forEach(file => {
         formData.append('images[]', file);
       });
-      
+
       const imagePosition = document.querySelector('input[name="imagePosition"]:checked');
       if (imagePosition && schedulerSelectedImages.length > 0) {
         formData.append('image_position', imagePosition.value);
@@ -535,24 +581,33 @@
         body: formData
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error(`Unexpected response type: ${contentType}. Status: ${response.status}`);
+        console.error(text.substring(0, 1000));
+        showAlert("Ошибка сервера. Пожалуйста, попробуйте позже или обратитесь в поддержку.", "danger");
+        return;
+      }
+
       const data = await response.json();
 
       if (data.success) {
-        showAlert("Задача успешно создана!", "success");
-        
+        showAlert("Задача успешно создана! ID: #" + data.task_id, "success");
+
         document.getElementById("scheduleMessage").value = "";
         sessionStorage.removeItem("scheduledMessage");
-        
+
         const recipientsInput = document.getElementById("scheduleRecipients");
         if (recipientsInput) recipientsInput.value = "";
         sessionStorage.removeItem("scheduledRecipients");
         sessionStorage.removeItem("scheduledRecipientsInfo");
-        
+
         document.getElementById("recipientsInfoEmpty").style.display = 'block';
         document.getElementById("recipientsInfoSelected").style.display = 'none';
         document.getElementById("schedulerRecipientsList").style.display = 'none';
         document.getElementById("schedulerRecipientsArrow").className = 'bi bi-chevron-down ms-1';
-        
+
         removeAllImages();
         sessionStorage.removeItem("scheduledImagesData");
         window.schedulerRecipientsInfo = null;
@@ -574,12 +629,14 @@
             </div>
           `;
         }
-        
+
         loadTasks();
       } else {
-        showAlert("Ошибка: " + data.error, "danger");
+        showAlert("Ошибка: " + (data.error || "Неизвестная ошибка"), "danger");
+        console.error("API returned error:", data);
       }
     } catch (error) {
+      console.error("Exception creating task:", error);
       showAlert("Ошибка создания задачи: " + error.message, "danger");
     } finally {
       createBtn.disabled = false;
