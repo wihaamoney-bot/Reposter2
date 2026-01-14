@@ -10,7 +10,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from models import db, User, ScheduledTask, ScheduledTimeSlot, MessageLog, IdempotentRequest, AuthCodeHash
+from models import db, User, ScheduledTask, ScheduledTimeSlot, MessageLog, SentMessage, IdempotentRequest, AuthCodeHash
 from telegram_client import get_telegram_manager
 from scheduler import init_scheduler, get_scheduler
 from logger import init_logger, get_logger
@@ -1455,6 +1455,8 @@ def get_task_recipients_status(task_id):
 
 @app.route('/api/scheduler/task/<int:task_id>/cancel', methods=['POST'])
 @login_required
+@telegram_auth_required
+@csrf.exempt
 def cancel_task(task_id):
     try:
         from sqlalchemy import text
@@ -1694,6 +1696,7 @@ def get_slot_recipients_status(slot_id):
 @app.route('/api/scheduler/delete/<int:task_id>', methods=['DELETE'])
 @login_required
 @telegram_auth_required
+@csrf.exempt
 def delete_scheduled_task(task_id):
     try:
         # Проверка прав собственности: пользователь может удалять только свои задачи
@@ -1701,17 +1704,35 @@ def delete_scheduled_task(task_id):
         if not task:
             return jsonify({'success': False, 'error': 'Task not found or access denied'}), 404
             
-        # 1. Удаляем связанные записи
-        # Удаляем логи
-        MessageLog.query.filter_by(task_id=task_id).delete(synchronize_session=False)
+        from sqlalchemy import text
         
-        # Удаляем временные слоты
+        # 1. Получаем все slot_id для этой задачи
+        slot_ids = db.session.execute(
+            text("SELECT id FROM scheduled_time_slots WHERE task_id = :task_id"),
+            {"task_id": task_id}
+        ).fetchall()
+        slot_ids = [s[0] for s in slot_ids]
+        
+        # 2. Удаляем SentMessage для всех слотов этой задачи (было добавлено для исправления ForeignKeyViolation)
+        if slot_ids:
+            db.session.execute(
+                text("DELETE FROM sent_messages WHERE slot_id = ANY(:slot_ids)"),
+                {"slot_ids": slot_ids}
+            )
+        
+        # 3. Удаляем MessageLog для слотов этой задачи
+        db.session.execute(
+            text("DELETE FROM message_logs WHERE slot_id IN (SELECT id FROM scheduled_time_slots WHERE task_id = :task_id)"),
+            {"task_id": task_id}
+        )
+        
+        # 4. Удаляем временные слоты
         ScheduledTimeSlot.query.filter_by(task_id=task_id).delete(synchronize_session=False)
         
-        # 2. Удаляем из планировщика (если она там есть)
+        # 5. Удаляем из планировщика (если она там есть)
         get_scheduler().remove_task(task_id)
         
-        # 3. Удаляем саму задачу
+        # 6. Удаляем саму задачу
         db.session.delete(task)
         db.session.commit()
         
