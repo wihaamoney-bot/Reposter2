@@ -1209,193 +1209,288 @@ def cleanup_tasks_api():
 @login_required
 @telegram_auth_required
 def create_scheduled_task():
-    message_text = request.form.get('message')
-    recipient_ids_str = request.form.get('recipients')
-    scheduled_times_str = request.form.get('scheduled_times')
-    recipients_info_str = request.form.get('recipients_info')
-    
-    image_paths = []
-    if 'images[]' in request.files:
-        files = request.files.getlist('images[]')
-        for idx, file in enumerate(files):
-            if file and file.filename and allowed_file(file.filename):
-                # Ensure the filename is safe and not empty
-                safe_name = secure_filename(file.filename)
-                if not safe_name:
-                    safe_name = f"image_{idx}.png"
-                import uuid
-                unique_id = str(uuid.uuid4())[:8]
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
-                filename = f"{timestamp}{idx}_{unique_id}_{safe_name}"
-                image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(image_path)
-                image_paths.append(image_path)
-                logger.info(f"Изображение загружено для планировщика: {image_path}")
-    elif 'image' in request.files:
-        file = request.files['image']
-        if file and file.filename and allowed_file(file.filename):
-            safe_name = secure_filename(file.filename)
-            if not safe_name:
-                safe_name = "image.png"
-            import uuid
-            unique_id = str(uuid.uuid4())[:8]
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
-            filename = f"{timestamp}0_{unique_id}_{safe_name}"
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(image_path)
-            image_paths.append(image_path)
-            logger.info(f"Изображение загружено для планировщика: {image_path}")
-    
-    image_path_str = json.dumps(image_paths) if image_paths else None
-    image_position = request.form.get('image_position', 'top')
-    
+    """Создание запланированной задачи на отправку сообщений.
+
+    Гарантии:
+    - Всегда возвращает JSON (включая ошибки)
+    - Валидирует входные данные и формат datetime
+    - Корректно обрабатывает tz_offset и конвертацию Local -> UTC
+    - Проверяет, что все времена в будущем (>= now + 5 секунд)
+    """
+
+    def _cleanup_saved_images(paths):
+        for p in paths or []:
+            try:
+                if p and os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+
     try:
-        recipient_ids = json.loads(recipient_ids_str) if recipient_ids_str else []
-        scheduled_times = json.loads(scheduled_times_str) if scheduled_times_str else []
-        recipients_info = json.loads(recipients_info_str) if recipients_info_str else []
-        
-        MAX_RECIPIENTS_PER_TASK = 10000
-        if len(recipient_ids) > MAX_RECIPIENTS_PER_TASK:
-            logger.warning(f"Попытка создать задачу с {len(recipient_ids)} получателями (лимит: {MAX_RECIPIENTS_PER_TASK})")
-            return jsonify({'success': False, 'error': f'Maximum {MAX_RECIPIENTS_PER_TASK} recipients per task allowed'})
+        # ========== ЭТАП 1: ПОЛУЧЕНИЕ И ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ ==========
+        message_text = (request.form.get('message') or '').strip()
+        recipient_ids_str = request.form.get('recipients') or ''
+        scheduled_times_str = request.form.get('scheduled_times') or ''
+        recipients_info_str = request.form.get('recipients_info') or ''
 
-        MAX_SLOTS_PER_TASK = 500
-        if len(scheduled_times) > MAX_SLOTS_PER_TASK:
-            logger.warning(f"Попытка создать задачу с {len(scheduled_times)} слотами (лимит: {MAX_SLOTS_PER_TASK})")
-            return jsonify({'success': False, 'error': f'Maximum {MAX_SLOTS_PER_TASK} time slots per task allowed'})
+        logger.log_request(
+            '/api/scheduler/create',
+            'POST',
+            data={
+                'message_length': len(message_text),
+                'has_recipients': bool(recipient_ids_str),
+                'has_times': bool(scheduled_times_str),
+            },
+        )
 
-        if len(recipient_ids) == 0:
-            logger.warning("Попытка создать задачу с пустым списком получателей")
-            return jsonify({'success': False, 'error': 'At least one recipient is required'})
+        try:
+            recipient_ids = json.loads(recipient_ids_str) if recipient_ids_str else []
+            scheduled_times = json.loads(scheduled_times_str) if scheduled_times_str else []
+            recipients_info = json.loads(recipients_info_str) if recipients_info_str else []
+        except json.JSONDecodeError as e:
+            logger.warning(f"Invalid JSON in scheduler create: {e}")
+            logger.log_response('/api/scheduler/create', 400, 'Invalid JSON data')
+            return jsonify({
+                'success': False,
+                'error': 'Ошибка парсинга данных. Пожалуйста, обновите страницу и попробуйте заново.'
+            }), 400
 
-        if len(scheduled_times) == 0:
-            logger.warning("Попытка создать задачу с пустым списком времён")
-            return jsonify({'success': False, 'error': 'At least one scheduled time is required'})
+        if not isinstance(recipient_ids, list) or not isinstance(scheduled_times, list) or not isinstance(recipients_info, list):
+            logger.warning("Invalid payload types in scheduler create")
+            logger.log_response('/api/scheduler/create', 400, 'Invalid payload types')
+            return jsonify({
+                'success': False,
+                'error': 'Некорректные данные формы. Пожалуйста, обновите страницу и попробуйте заново.'
+            }), 400
 
-        # Validate all scheduled times are in the future (at least 5 seconds from now)
-        min_allowed_time = datetime.utcnow() + timedelta(seconds=5)
-        for dt_str in scheduled_times:
+        if not message_text or not recipient_ids or not scheduled_times:
+            logger.warning("Missing required fields in scheduler create")
+            logger.log_response('/api/scheduler/create', 400, 'Missing required fields')
+            return jsonify({
+                'success': False,
+                'error': 'Заполните все обязательные поля: сообщение, получатели и время отправки'
+            }), 400
+
+        MAX_MESSAGE_LENGTH = 4096
+        if len(message_text) > MAX_MESSAGE_LENGTH:
+            logger.warning(f"Message too long: {len(message_text)}")
+            logger.log_response('/api/scheduler/create', 400, 'Message too long')
+            return jsonify({
+                'success': False,
+                'error': f'Сообщение слишком длинное (максимум {MAX_MESSAGE_LENGTH} символов)'
+            }), 400
+
+        MAX_RECIPIENTS = 10000
+        if len(recipient_ids) > MAX_RECIPIENTS:
+            logger.warning(f"Too many recipients: {len(recipient_ids)}")
+            logger.log_response('/api/scheduler/create', 400, 'Too many recipients')
+            return jsonify({
+                'success': False,
+                'error': f'Максимум {MAX_RECIPIENTS} получателей за раз'
+            }), 400
+
+        MAX_SLOTS = 500
+        if len(scheduled_times) > MAX_SLOTS:
+            logger.warning(f"Too many time slots: {len(scheduled_times)}")
+            logger.log_response('/api/scheduler/create', 400, 'Too many slots')
+            return jsonify({
+                'success': False,
+                'error': f'Максимум {MAX_SLOTS} временных слотов за раз'
+            }), 400
+
+        # ========== ЭТАП 2: ПОЛУЧЕНИЕ И ВАЛИДАЦИЯ ЧАСОВОГО ПОЯСА ==========
+        tz_offset = None
+        tz_offset_source = 'default'
+
+        try:
+            tz_offset_str = request.form.get('tz_offset')
+            if tz_offset_str is not None and str(tz_offset_str).strip():
+                try:
+                    tz_offset = int(tz_offset_str)
+                    tz_offset_source = 'form'
+                except (ValueError, TypeError):
+                    tz_offset = None
+
+            if tz_offset is None:
+                tz_offset = get_user_tz_offset_minutes()
+                tz_offset_source = 'cookie'
+
+            if not isinstance(tz_offset, int):
+                raise ValueError(f"tz_offset is not int: {type(tz_offset)}")
+
+            if not (-720 <= tz_offset <= 840):
+                logger.warning(f"tz_offset out of range: {tz_offset}")
+                tz_offset = 0
+                tz_offset_source = 'fallback_oob'
+
+            logger.info(f"Using timezone offset: {tz_offset} minutes (source: {tz_offset_source})")
+        except Exception as e:
+            logger.error(f"Error getting timezone offset: {e}")
+            tz_offset = 0
+            tz_offset_source = 'fallback_error'
+
+        # ========== ЭТАП 3: ПАРСИНГ И ВАЛИДАЦИЯ ВРЕМЕНИ ==========
+        utc_scheduled_times = []
+        for idx, dt_str in enumerate(scheduled_times):
+            if not isinstance(dt_str, str) or not dt_str.strip():
+                logger.warning(f"Slot {idx}: invalid type/value: {type(dt_str)}")
+                logger.log_response('/api/scheduler/create', 400, 'Invalid datetime value')
+                return jsonify({
+                    'success': False,
+                    'error': f'Слот {idx + 1}: некорректный формат времени'
+                }), 400
+
             try:
                 local_dt = datetime.strptime(dt_str, '%Y-%m-%dT%H:%M')
-                utc_dt = local_dt - timedelta(minutes=tz_offset)
-                if utc_dt < min_allowed_time:
-                    logger.warning(f"Попытка создать слот с временем в прошлом: Local {dt_str}, UTC {utc_dt}")
-                    return jsonify({'success': False, 'error': 'All scheduled times must be at least 5 seconds in the future'})
             except ValueError as e:
-                logger.warning(f"Invalid datetime format: {dt_str}")
-                return jsonify({'success': False, 'error': 'Invalid datetime format'})
-            
-    except json.JSONDecodeError:
-        return jsonify({'success': False, 'error': 'Invalid JSON data'})
-    
-    logger.log_request('/api/scheduler/create', 'POST', data={'recipients': len(recipient_ids), 'scheduled_times': len(scheduled_times)})
-    logger.info(f"API запрос на создание задачи планировщика")
-    logger.info(f"Параметры: Получателей: {len(recipient_ids)}, Слотов времени: {len(scheduled_times)}, Позиция изображений: {image_position}")
-    
-    if not all([message_text, recipient_ids, scheduled_times]):
-        logger.warning("Отсутствуют обязательные поля для создания задачи")
-        logger.log_response('/api/scheduler/create', 400, 'All fields are required')
-        return jsonify({'success': False, 'error': 'All fields are required'})
-    
-    try:
-        # ИНИЦИАЛИЗИРУЕМ СРАЗУ с дефолтным значением
-        tz_offset = get_user_tz_offset_minutes()
-        logger.info(f"Timezone offset initialized with default: {tz_offset} minutes")
-        
-        # Get offset from form data first, then cookie as fallback
-        tz_offset_str = request.form.get('tz_offset')
-        logger.info(f"Raw tz_offset from form: {tz_offset_str}")
-        
-        if tz_offset_str is not None:
-            try:
-                tz_offset = int(tz_offset_str)
-                logger.info(f"Timezone offset updated from form: {tz_offset} minutes")
-            except:
-                logger.info(f"Failed to parse tz_offset from form, using default: {tz_offset} minutes")
-        else:
-            logger.info(f"No tz_offset in form, using default: {tz_offset} minutes")
-        
-        utc_scheduled_times = []
-        for dt_str in scheduled_times:
-            # HTML5 datetime-local gives YYYY-MM-DDTHH:MM
-            local_dt = datetime.strptime(dt_str, '%Y-%m-%dT%H:%M')
-            # Standard Formula: UTC = Local - Offset (where offset is positive for East, like Moscow +180)
-            # Example Moscow (UTC+3): Offset = 180. 20:45 - 180m = 17:45 UTC.
+                logger.warning(f"Slot {idx}: invalid datetime format '{dt_str}': {e}")
+                logger.log_response('/api/scheduler/create', 400, 'Invalid datetime format')
+                return jsonify({
+                    'success': False,
+                    'error': f'Слот {idx + 1}: неправильный формат времени "{dt_str}". Ожидается YYYY-MM-DDTHH:MM'
+                }), 400
+
             utc_dt = local_dt - timedelta(minutes=tz_offset)
-            # Store in DB-friendly format
             utc_scheduled_times.append(utc_dt.strftime('%Y-%m-%d %H:%M:%S'))
-            logger.info(f"Time Sync Result: Local {dt_str} -> UTC {utc_dt} (Offset: {tz_offset}m)")
-        
-        # ВАЛИДАЦИЯ: Проверяем что все времена в будущем
+
+        # ========== ЭТАП 4: ВАЛИДАЦИЯ ЧТО ВРЕМЕНА В БУДУЩЕМ ==========
         now_utc = datetime.utcnow()
         min_allowed_utc = now_utc + timedelta(seconds=5)
-        
-        invalid_times = []
+
+        invalid_slots = []
         for idx, utc_time_str in enumerate(utc_scheduled_times):
             try:
                 utc_dt = datetime.strptime(utc_time_str, '%Y-%m-%d %H:%M:%S')
                 if utc_dt < min_allowed_utc:
-                    invalid_times.append({
-                        'index': idx,
-                        'value': utc_time_str,
-                        'current_utc': now_utc.strftime('%Y-%m-%d %H:%M:%S')
-                    })
+                    invalid_slots.append(idx)
             except ValueError as e:
-                logger.error(f"Ошибка парсинга времени {utc_time_str}: {e}")
-                return jsonify({
-                    'success': False,
-                    'error': f'Некорректный формат времени: {utc_time_str}'
-                }), 400
-        
-        if invalid_times:
-            error_details = ', '.join([f"слот {t['index']+1}: {t['value']}" for t in invalid_times])
-            logger.warning(f"Попытка создать задачу с временем в прошлом: {error_details}")
-            logger.log_response('/api/scheduler/create', 400, 'Scheduled time is in the past')
+                logger.error(f"Error parsing UTC time {utc_time_str}: {e}")
+                invalid_slots.append(idx)
+
+        if invalid_slots:
+            details = ', '.join([f"слот {i + 1}" for i in invalid_slots])
+            logger.warning(f"Scheduled times in the past: {details}")
+            logger.log_response('/api/scheduler/create', 400, 'Times in the past')
             return jsonify({
                 'success': False,
-                'error': f'Ошибка: некоторые времена уже в прошлом ({error_details}). '
-                        f'Текущее UTC время: {now_utc.strftime("%Y-%m-%d %H:%M:%S")}. '
-                        f'Используйте время позже чем {min_allowed_utc.strftime("%Y-%m-%d %H:%M:%S")} UTC'
+                'error': f'Ошибка: {details} содержат время в прошлом. '
+                         f'Текущее UTC время: {now_utc.strftime("%Y-%m-%d %H:%M:%S")}. '
+                         f'Используйте время не раньше чем {min_allowed_utc.strftime("%Y-%m-%d %H:%M:%S")} UTC'
             }), 400
-        
-        # Получаем активную сессию для текущей задачи
-        device_id = get_device_id()
-        
-        # Получаем текущую сессию для автоматического подхвата TelegramClient
-        session_name = session.get('telegram_session_name')
-        
-        task = ScheduledTask()
-        task.user_id=current_user.id
-        task.message_text=message_text
-        task.recipients=json.dumps(recipient_ids)
-        task.recipients_info=json.dumps(recipients_info) if recipients_info else None
-        task.image_path=image_path_str
-        task.image_position=image_position if image_paths else 'top'
-        task.scheduled_times=json.dumps(utc_scheduled_times)
-        task.device_id=device_id
-        task.session_name=session_name
-        task.telegram_username=session.get('telegram_username', current_user.telegram_username)
-        
-        logger.info(f"Создание задачи в планировщике...")
-        result = get_scheduler().add_task(task, utc_scheduled_times)
-        
-        # Пункт 3: Пробуждаем планировщик немедленно
-        scheduler = get_scheduler()
-        if scheduler and hasattr(scheduler, 'trigger_immediate_process'):
-            scheduler.trigger_immediate_process()
-        
-        if result['success']:
-            logger.info(f"Задача планировщика создана успешно. ID: {result.get('task_id')}")
-            logger.log_scheduler_action("Создание задачи", task_id=result.get('task_id'), details=f"Получателей: {len(recipient_ids)}, Слотов: {len(scheduled_times)}")
-        else:
-            logger.error(f"Ошибка создания задачи: {result.get('error')}")
-        
-        logger.log_response('/api/scheduler/create', 200 if result['success'] else 500, result.get('error', 'Success'))
-        return jsonify(result)
+
+        # ========== ЭТАП 5: ОБРАБОТКА ИЗОБРАЖЕНИЙ ==========
+        image_paths = []
+        try:
+            import uuid
+
+            if 'images[]' in request.files:
+                files = request.files.getlist('images[]')
+                for idx, file in enumerate(files):
+                    if file and file.filename and allowed_file(file.filename):
+                        safe_name = secure_filename(file.filename) or f"image_{idx}.png"
+                        unique_id = str(uuid.uuid4())[:8]
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
+                        filename = f"{timestamp}{idx}_{unique_id}_{safe_name}"
+                        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                        file.save(image_path)
+                        image_paths.append(image_path)
+                        logger.info(f"Image {idx} saved: {filename}")
+            elif 'image' in request.files:
+                file = request.files['image']
+                if file and file.filename and allowed_file(file.filename):
+                    safe_name = secure_filename(file.filename) or "image.png"
+                    unique_id = str(uuid.uuid4())[:8]
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
+                    filename = f"{timestamp}0_{unique_id}_{safe_name}"
+                    image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    file.save(image_path)
+                    image_paths.append(image_path)
+                    logger.info(f"Image saved: {filename}")
+        except Exception as e:
+            _cleanup_saved_images(image_paths)
+            logger.error(f"Error processing images: {e}", exc_info=True)
+            logger.log_response('/api/scheduler/create', 400, 'Image processing error')
+            return jsonify({
+                'success': False,
+                'error': f'Ошибка при обработке изображений: {str(e)}'
+            }), 400
+
+        image_path_str = json.dumps(image_paths) if image_paths else None
+        image_position = request.form.get('image_position', 'top')
+
+        # ========== ЭТАП 6: СОЗДАНИЕ ЗАДАЧИ В БД ==========
+        try:
+            device_id = get_device_id()
+            session_name = session.get('telegram_session_name')
+
+            task = ScheduledTask()
+            task.user_id = current_user.id
+            task.message_text = message_text
+            task.recipients = json.dumps(recipient_ids)
+            task.recipients_info = json.dumps(recipients_info) if recipients_info else None
+            task.image_path = image_path_str
+            task.image_position = image_position if image_paths else 'top'
+            task.scheduled_times = json.dumps(utc_scheduled_times)
+            task.device_id = device_id
+            task.session_name = session_name
+            task.telegram_username = session.get('telegram_username', current_user.telegram_username)
+
+            scheduler = get_scheduler()
+            if not scheduler:
+                _cleanup_saved_images(image_paths)
+                logger.error("Scheduler is not initialized")
+                logger.log_response('/api/scheduler/create', 500, 'Scheduler is not initialized')
+                return jsonify({
+                    'success': False,
+                    'error': 'Планировщик не инициализирован. Попробуйте позже.'
+                }), 500
+
+            logger.info(f"Creating scheduled task for user {current_user.id} with {len(scheduled_times)} slots")
+            result = scheduler.add_task(task, utc_scheduled_times)
+
+            if result.get('success'):
+                if hasattr(scheduler, 'trigger_immediate_process'):
+                    scheduler.trigger_immediate_process()
+
+                logger.info(f"Task created successfully. ID: {result.get('task_id')}")
+                logger.log_scheduler_action(
+                    "Создание задачи",
+                    task_id=result.get('task_id'),
+                    details=f"Recipients: {len(recipient_ids)}, Slots: {len(scheduled_times)}",
+                )
+                logger.log_response('/api/scheduler/create', 200, 'Success')
+                return jsonify({
+                    'success': True,
+                    'task_id': result.get('task_id'),
+                    'message': 'Задача успешно создана!'
+                }), 200
+
+            _cleanup_saved_images(image_paths)
+            logger.error(f"Scheduler failed to create task: {result.get('error')}")
+            logger.log_response('/api/scheduler/create', 500, result.get('error') or 'Scheduler error')
+            return jsonify({
+                'success': False,
+                'error': f'Ошибка планировщика: {result.get("error")}'
+            }), 500
+
+        except Exception as e:
+            _cleanup_saved_images(image_paths)
+            db.session.rollback()
+            logger.error(f"Exception creating task: {e}", exc_info=True)
+            logger.log_response('/api/scheduler/create', 500, str(e))
+            return jsonify({
+                'success': False,
+                'error': f'Ошибка создания задачи: {str(e)}'
+            }), 500
+
     except Exception as e:
-        logger.error(f"Исключение при создании задачи планировщика: {e}")
+        db.session.rollback()
+        logger.error(f"Unhandled error in create_scheduled_task: {e}", exc_info=True)
         logger.log_response('/api/scheduler/create', 500, str(e))
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({
+            'success': False,
+            'error': 'Внутренняя ошибка сервера. Попробуйте позже.'
+        }), 500
 
 
 @app.route('/api/scheduler/tasks')
