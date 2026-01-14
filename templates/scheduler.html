@@ -150,6 +150,71 @@
     </div>
   </div>
 </div>
+
+<!-- Modal for Slot Details -->
+<div class="modal fade" id="slotDetailsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Детали слота</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Информация о слоте -->
+        <div class="mb-3">
+          <p class="mb-1"><strong>Статус:</strong> <span id="slotStatus"></span></p>
+          <p class="mb-1"><strong>Время:</strong> <span id="slotDateTime"></span></p>
+          <p class="mb-1"><strong>Прогресс:</strong> <span id="slotProgress"></span></p>
+        </div>
+        
+        <!-- Фильтры по статусу -->
+        <div class="mb-3">
+          <label class="fw-bold mb-2">Фильтр по статусу:</label>
+          <div class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn btn-outline-secondary active" data-filter="all">
+              Все (<span id="countAll">0</span>)
+            </button>
+            <button type="button" class="btn btn-outline-success" data-filter="sent">
+              ✅ Успешно (<span id="countSent">0</span>)
+            </button>
+            <button type="button" class="btn btn-outline-danger" data-filter="failed">
+              ❌ Ошибка (<span id="countFailed">0</span>)
+            </button>
+            <button type="button" class="btn btn-outline-warning" data-filter="pending">
+              ⏳ Ожидает (<span id="countPending">0</span>)
+            </button>
+            <button type="button" class="btn btn-outline-secondary" data-filter="cancelled">
+              ⭕ Отменено (<span id="countCancelled">0</span>)
+            </button>
+          </div>
+        </div>
+        
+        <!-- Таблица с получателями -->
+        <div class="table-responsive">
+          <table class="table table-sm table-hover">
+            <thead>
+              <tr>
+                <th>Получатель</th>
+                <th>Статус</th>
+                <th>Время отправки</th>
+                <th>Примечание</th>
+              </tr>
+            </thead>
+            <tbody id="recipientsTable">
+              <tr>
+                <td colspan="4" class="text-center text-muted">Загрузка...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %} 
 
 {% block extra_js %}
@@ -584,7 +649,10 @@
           }
 
           slotsHtml += `
-            <div class="mb-3 p-2 border-bottom">
+            <div class="mb-3 p-2 border-bottom slot-item" data-slot-id="${slot.id}" style="cursor: pointer; transition: background-color 0.2s;" 
+                 onmouseover="this.style.backgroundColor='#f8f9fa'" 
+                 onmouseout="this.style.backgroundColor='transparent'"
+                 onclick="openSlotDetails(${slot.id})">
               <div class="d-flex justify-content-between align-items-center mb-1">
                 <small class="text-muted">${date}</small>
                 ${statusBadge}
@@ -954,6 +1022,38 @@
 
       const completedRecipientsHtml = (task.recipients_info && task.recipients_info.length > 0) ? renderRecipientsInfo(task.recipients_info, false) : '<p class="text-muted small">Детальная информация о получателях недоступна</p>';
 
+      // Render time slots if available
+      let timeSlotsHtml = '';
+      if (task.time_slots && task.time_slots.length > 0) {
+        timeSlotsHtml = '<h6 class="mt-3"><i class="bi bi-clock-history"></i> Слоты рассылки:</h6>';
+        task.time_slots.forEach(slot => {
+          const date = formatDate(slot.datetime);
+          let statusBadge = '';
+          
+          switch(slot.status) {
+            case 'pending': statusBadge = '<span class="badge bg-secondary">Ожидает</span>'; break;
+            case 'executing': statusBadge = '<span class="badge bg-primary">Выполняется</span>'; break;
+            case 'completed': statusBadge = '<span class="badge bg-success">Завершено</span>'; break;
+            case 'completed_with_errors': statusBadge = '<span class="badge bg-warning text-dark">С ошибками</span>'; break;
+            case 'cancelled': statusBadge = '<span class="badge bg-warning text-dark">Отменено</span>'; break;
+            case 'failed': statusBadge = '<span class="badge bg-danger">Ошибка</span>'; break;
+            default: statusBadge = `<span class="badge bg-info">${slot.status}</span>`;
+          }
+
+          timeSlotsHtml += `
+            <div class="mb-2 p-2 border-bottom slot-item" data-slot-id="${slot.id}" style="cursor: pointer; transition: background-color 0.2s;" 
+                 onmouseover="this.style.backgroundColor='#f8f9fa'" 
+                 onmouseout="this.style.backgroundColor='transparent'"
+                 onclick="openSlotDetails(${slot.id})">
+              <div class="d-flex justify-content-between align-items-center">
+                <small class="text-muted">${date}</small>
+                ${statusBadge}
+              </div>
+            </div>
+          `;
+        });
+      }
+
       html += `
         <div class="accordion-item">
           <h2 class="accordion-header">
@@ -973,6 +1073,7 @@
                 <div class="col-md-7">
                   <p><strong>Создана:</strong> ${formatDate(task.created_at)}</p>
                   <p><strong>Завершена:</strong> ${formatDate(task.completed_at) || 'N/A'}</p>
+                  ${timeSlotsHtml}
                   <h6 class="mt-3"><i class="bi bi-chat-dots"></i> Текст сообщения:</h6>
                   <div class="p-2 bg-light border rounded mb-3" style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(task.message_text)}</div>
                 </div>
@@ -996,6 +1097,176 @@
 
     html += '</div>';
     container.innerHTML = html;
+  }
+
+  // Modal functionality for slot details
+  let currentSlotId = null;
+  let slotUpdateInterval = null;
+  let allRecipients = [];
+  let currentFilter = 'all';
+
+  async function openSlotDetails(slotId) {
+    currentSlotId = slotId;
+    currentFilter = 'all';
+    
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('slotDetailsModal'));
+    modal.show();
+    
+    // Load slot data
+    await loadSlotData(slotId);
+    
+    // Setup filter buttons
+    setupFilterButtons();
+    
+    // Setup auto-refresh for executing slots
+    setupAutoRefresh();
+    
+    // Cleanup on modal close
+    document.getElementById('slotDetailsModal').addEventListener('hidden.bs.modal', function () {
+      if (slotUpdateInterval) {
+        clearInterval(slotUpdateInterval);
+        slotUpdateInterval = null;
+      }
+    }, { once: true });
+  }
+
+  async function loadSlotData(slotId) {
+    try {
+      const response = await fetch(`/api/slot/${slotId}/recipients-status`);
+      const data = await response.json();
+      
+      if (data.success) {
+        const slot = data.slot;
+        allRecipients = data.recipients;
+        
+        // Update slot info
+        document.getElementById('slotStatus').innerHTML = getStatusBadge(slot.status);
+        document.getElementById('slotDateTime').textContent = formatDate(slot.scheduled_datetime);
+        document.getElementById('slotProgress').innerHTML = `${slot.processed_recipients}/${slot.total_recipients} (${slot.percentage}%)`;
+        
+        // Update counts
+        updateCounts();
+        
+        // Render table
+        renderRecipientsTable();
+        
+        // Setup auto-refresh if executing
+        if (slot.status === 'executing') {
+          if (!slotUpdateInterval) {
+            slotUpdateInterval = setInterval(() => loadSlotData(slotId), 2000);
+          }
+        } else {
+          if (slotUpdateInterval) {
+            clearInterval(slotUpdateInterval);
+            slotUpdateInterval = null;
+          }
+        }
+      } else {
+        showAlert('Ошибка загрузки данных слота: ' + data.error, 'danger');
+      }
+    } catch (error) {
+      console.error('Error loading slot data:', error);
+      showAlert('Ошибка загрузки данных слота', 'danger');
+    }
+  }
+
+  function setupFilterButtons() {
+    const filterButtons = document.querySelectorAll('[data-filter]');
+    filterButtons.forEach(btn => {
+      btn.addEventListener('click', function() {
+        // Remove active class from all buttons
+        filterButtons.forEach(b => b.classList.remove('active'));
+        // Add active class to clicked button
+        this.classList.add('active');
+        // Update filter
+        currentFilter = this.getAttribute('data-filter');
+        // Re-render table
+        renderRecipientsTable();
+      });
+    });
+  }
+
+  function setupAutoRefresh() {
+    // Auto-refresh is handled in loadSlotData
+  }
+
+  function updateCounts() {
+    const counts = {
+      all: allRecipients.length,
+      sent: 0,
+      failed: 0,
+      pending: 0,
+      cancelled: 0
+    };
+    
+    allRecipients.forEach(r => {
+      if (counts[r.status] !== undefined) {
+        counts[r.status]++;
+      }
+    });
+    
+    document.getElementById('countAll').textContent = counts.all;
+    document.getElementById('countSent').textContent = counts.sent;
+    document.getElementById('countFailed').textContent = counts.failed;
+    document.getElementById('countPending').textContent = counts.pending;
+    document.getElementById('countCancelled').textContent = counts.cancelled;
+  }
+
+  function renderRecipientsTable() {
+    const tbody = document.getElementById('recipientsTable');
+    
+    // Filter recipients
+    let filteredRecipients = allRecipients;
+    if (currentFilter !== 'all') {
+      filteredRecipients = allRecipients.filter(r => r.status === currentFilter);
+    }
+    
+    if (filteredRecipients.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Нет данных</td></tr>';
+      return;
+    }
+    
+    let html = '';
+    filteredRecipients.forEach(r => {
+      const statusBadge = getRecipientStatusBadge(r.status);
+      const sentAt = r.sent_at ? formatDate(r.sent_at) : '-';
+      const errorMsg = r.error_message ? escapeHtml(r.error_message) : '-';
+      const errorTitle = r.error_message ? ` title="${escapeHtml(r.error_message)}"` : '';
+      
+      html += `
+        <tr>
+          <td>${escapeHtml(r.name)}</td>
+          <td>${statusBadge}</td>
+          <td>${sentAt}</td>
+          <td${errorTitle} style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${errorMsg}</td>
+        </tr>
+      `;
+    });
+    
+    tbody.innerHTML = html;
+  }
+
+  function getStatusBadge(status) {
+    const badges = {
+      'pending': '<span class="badge bg-secondary">Ожидает</span>',
+      'executing': '<span class="badge bg-primary">Выполняется</span>',
+      'completed': '<span class="badge bg-success">Завершено</span>',
+      'completed_with_errors': '<span class="badge bg-warning text-dark">Завершено с ошибками</span>',
+      'cancelled': '<span class="badge bg-warning text-dark">Отменено</span>',
+      'failed': '<span class="badge bg-danger">Ошибка</span>'
+    };
+    return badges[status] || `<span class="badge bg-info">${status}</span>`;
+  }
+
+  function getRecipientStatusBadge(status) {
+    const badges = {
+      'sent': '<span class="badge bg-success">✅ Отправлено</span>',
+      'failed': '<span class="badge bg-danger">❌ Ошибка</span>',
+      'pending': '<span class="badge bg-warning">⏳ Ожидает</span>',
+      'cancelled': '<span class="badge bg-secondary">⭕ Отменено</span>'
+    };
+    return badges[status] || `<span class="badge bg-info">${status}</span>`;
   }
 </script>
 {% endblock %}
