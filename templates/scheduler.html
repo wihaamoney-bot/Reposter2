@@ -292,11 +292,10 @@
     }
 
     // Initialize time slots with proper minimum time
-    const minDateTime = getMinDateTimeString();
     const defaultDateTime = getDefaultDateTimeString();
 
     document.querySelector('.scheduled-datetime').value = defaultDateTime;
-    document.querySelector('.scheduled-datetime').min = minDateTime;
+    // Браузерная валидация удалена, используем только JavaScript валидацию
 
     loadTasks();
     loadCompletedTasks();

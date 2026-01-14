@@ -1298,6 +1298,10 @@ def create_scheduled_task():
         return jsonify({'success': False, 'error': 'All fields are required'})
     
     try:
+        # ИНИЦИАЛИЗИРУЕМ СРАЗУ с дефолтным значением
+        tz_offset = get_user_tz_offset_minutes()
+        logger.info(f"Timezone offset initialized with default: {tz_offset} minutes")
+        
         # Get offset from form data first, then cookie as fallback
         tz_offset_str = request.form.get('tz_offset')
         logger.info(f"Raw tz_offset from form: {tz_offset_str}")
@@ -1305,13 +1309,11 @@ def create_scheduled_task():
         if tz_offset_str is not None:
             try:
                 tz_offset = int(tz_offset_str)
-                logger.info(f"Timezone offset used: {tz_offset} minutes (from form)")
+                logger.info(f"Timezone offset updated from form: {tz_offset} minutes")
             except:
-                tz_offset = get_user_tz_offset_minutes()
-                logger.info(f"Timezone offset used: {tz_offset} minutes (from cookie fallback)")
+                logger.info(f"Failed to parse tz_offset from form, using default: {tz_offset} minutes")
         else:
-            tz_offset = get_user_tz_offset_minutes()
-            logger.info(f"Timezone offset used: {tz_offset} minutes (from cookie)")
+            logger.info(f"No tz_offset in form, using default: {tz_offset} minutes")
         
         utc_scheduled_times = []
         for dt_str in scheduled_times:
@@ -1323,6 +1325,38 @@ def create_scheduled_task():
             # Store in DB-friendly format
             utc_scheduled_times.append(utc_dt.strftime('%Y-%m-%d %H:%M:%S'))
             logger.info(f"Time Sync Result: Local {dt_str} -> UTC {utc_dt} (Offset: {tz_offset}m)")
+        
+        # ВАЛИДАЦИЯ: Проверяем что все времена в будущем
+        now_utc = datetime.utcnow()
+        min_allowed_utc = now_utc + timedelta(seconds=5)
+        
+        invalid_times = []
+        for idx, utc_time_str in enumerate(utc_scheduled_times):
+            try:
+                utc_dt = datetime.strptime(utc_time_str, '%Y-%m-%d %H:%M:%S')
+                if utc_dt < min_allowed_utc:
+                    invalid_times.append({
+                        'index': idx,
+                        'value': utc_time_str,
+                        'current_utc': now_utc.strftime('%Y-%m-%d %H:%M:%S')
+                    })
+            except ValueError as e:
+                logger.error(f"Ошибка парсинга времени {utc_time_str}: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Некорректный формат времени: {utc_time_str}'
+                }), 400
+        
+        if invalid_times:
+            error_details = ', '.join([f"слот {t['index']+1}: {t['value']}" for t in invalid_times])
+            logger.warning(f"Попытка создать задачу с временем в прошлом: {error_details}")
+            logger.log_response('/api/scheduler/create', 400, 'Scheduled time is in the past')
+            return jsonify({
+                'success': False,
+                'error': f'Ошибка: некоторые времена уже в прошлом ({error_details}). '
+                        f'Текущее UTC время: {now_utc.strftime("%Y-%m-%d %H:%M:%S")}. '
+                        f'Используйте время позже чем {min_allowed_utc.strftime("%Y-%m-%d %H:%M:%S")} UTC'
+            }), 400
         
         # Получаем активную сессию для текущей задачи
         device_id = get_device_id()
