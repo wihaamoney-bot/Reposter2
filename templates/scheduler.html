@@ -229,7 +229,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     startDateTimeUpdater('dateDisplay', 'timeDisplay');
-    
+
     // 1. Сначала восстанавливаем данные из sessionStorage
     const savedMessage = sessionStorage.getItem("scheduledMessage");
     const savedRecipients = sessionStorage.getItem("scheduledRecipients");
@@ -244,18 +244,18 @@
       try {
         const recipients = JSON.parse(savedRecipients);
         const recipientsInfo = JSON.parse(savedRecipientsInfo);
-        
+
         if (recipients.length > 0) {
           document.getElementById("scheduleRecipients").value = savedRecipients;
           window.schedulerRecipientsInfo = recipientsInfo;
-          
+
           document.getElementById("recipientsInfoEmpty").style.display = 'none';
           document.getElementById("recipientsInfoSelected").style.display = 'block';
           document.getElementById("schedulerRecipientsCount").textContent = recipients.length;
-          
+
           // Важно: Список скрыт по умолчанию, но мы его наполняем
           updateSchedulerRecipientsList();
-          
+
           // Раскрываем список сразу, чтобы пользователь видел результат
           const listDiv = document.getElementById("schedulerRecipientsList");
           const arrow = document.getElementById("schedulerRecipientsArrow");
@@ -291,29 +291,80 @@
       }
     }
 
-    const now = new Date();
-    now.setMinutes(now.getMinutes() + 5);
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const defaultDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
-    
-    const nowMin = new Date();
-    const minYear = nowMin.getFullYear();
-    const minMonth = String(nowMin.getMonth() + 1).padStart(2, '0');
-    const minDay = String(nowMin.getDate()).padStart(2, '0');
-    const minHours = String(nowMin.getHours()).padStart(2, '0');
-    const minMinutes = String(nowMin.getMinutes()).padStart(2, '0');
-    const minDateTime = `${minYear}-${minMonth}-${minDay}T${minHours}:${minMinutes}`;
-    
+    // Initialize time slots with proper minimum time
+    const minDateTime = getMinDateTimeString();
+    const defaultDateTime = getDefaultDateTimeString();
+
     document.querySelector('.scheduled-datetime').value = defaultDateTime;
     document.querySelector('.scheduled-datetime').min = minDateTime;
 
     loadTasks();
     loadCompletedTasks();
   });
+
+  /**
+   * Returns the minimum allowed datetime string (current time + 5 seconds, rounded up to next minute)
+   * Format: YYYY-MM-DDTHH:MM
+   */
+  function getMinDateTimeString() {
+    const now = new Date();
+    // Add 5 seconds buffer for processing time
+    now.setSeconds(now.getSeconds() + 5);
+
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
+  /**
+   * Returns the default datetime string (current time + 5 minutes)
+   * Format: YYYY-MM-DDTHH:MM
+   */
+  function getDefaultDateTimeString() {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 5);
+
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
+  /**
+   * Validates that a scheduled time is at least 5 seconds in the future
+   * Returns { valid: boolean, currentTime: string, message: string }
+   */
+  function validateScheduledTime(dateTimeString) {
+    const now = new Date();
+    now.setSeconds(now.getSeconds() + 5); // Add 5 second buffer
+
+    const scheduledTime = new Date(dateTimeString);
+
+    if (scheduledTime < now) {
+      const currentTimeStr = now.toLocaleString('ru-RU', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+      return {
+        valid: false,
+        currentTime: currentTimeStr,
+        message: `Время отправки должно быть в будущем. Текущее время: ${currentTimeStr}`
+      };
+    }
+
+    return { valid: true };
+  }
 
   document.getElementById('scheduleImages').addEventListener('change', function(e) {
     const files = Array.from(e.target.files);
@@ -382,23 +433,9 @@
 
   function addScheduledTime() {
     const container = document.getElementById('scheduledTimes');
-    const now = new Date();
-    now.setMinutes(now.getMinutes() + 5);
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const defaultDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
-    
-    const nowMin = new Date();
-    const minYear = nowMin.getFullYear();
-    const minMonth = String(nowMin.getMonth() + 1).padStart(2, '0');
-    const minDay = String(nowMin.getDate()).padStart(2, '0');
-    const minHours = String(nowMin.getHours()).padStart(2, '0');
-    const minMinutes = String(nowMin.getMinutes()).padStart(2, '0');
-    const minDateTime = `${minYear}-${minMonth}-${minDay}T${minHours}:${minMinutes}`;
-    
+    const defaultDateTime = getDefaultDateTimeString();
+    const minDateTime = getMinDateTimeString();
+
     const newRow = document.createElement('div');
     newRow.className = 'scheduled-time-row mb-2';
     newRow.innerHTML = `
@@ -410,7 +447,7 @@
       </div>
     `;
     container.appendChild(newRow);
-    
+
     updateRemoveButtons();
   }
 
@@ -455,6 +492,15 @@
     if (scheduledTimes.length === 0) {
       showAlert("Добавьте хотя бы одну дату и время отправки", "warning");
       return;
+    }
+
+    // Validate all scheduled times are in the future
+    for (const timeStr of scheduledTimes) {
+      const validation = validateScheduledTime(timeStr);
+      if (!validation.valid) {
+        showAlert("Ошибка времени: " + validation.message, "danger");
+        return;
+      }
     }
 
     if (!recipientsStr) {
@@ -511,24 +557,11 @@
         removeAllImages();
         sessionStorage.removeItem("scheduledImagesData");
         window.schedulerRecipientsInfo = null;
-        
-        const now = new Date();
-        now.setMinutes(now.getMinutes() + 5);
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const defaultDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
-        
-        const nowMin = new Date();
-        const minYear = nowMin.getFullYear();
-        const minMonth = String(nowMin.getMonth() + 1).padStart(2, '0');
-        const minDay = String(nowMin.getDate()).padStart(2, '0');
-        const minHours = String(nowMin.getHours()).padStart(2, '0');
-        const minMinutes = String(nowMin.getMinutes()).padStart(2, '0');
-        const minDateTime = `${minYear}-${minMonth}-${minDay}T${minHours}:${minMinutes}`;
-        
+
+        // Reset time slots to default values
+        const defaultDateTime = getDefaultDateTimeString();
+        const minDateTime = getMinDateTimeString();
+
         const container = document.getElementById('scheduledTimes');
         if (container) {
           container.innerHTML = `
@@ -718,21 +751,27 @@
 
   async function cancelTask(taskId) {
     if (!confirm("Вы уверены, что хотите отменить эту задачу? Рассылка прекратится немедленно.")) return;
-    
+
     try {
       const response = await fetch(`/api/scheduler/task/${taskId}/cancel`, {
         method: "POST",
-        headers: { 
+        headers: {
           'X-CSRF-Token': ApiClient.getCsrfToken(),
           'Content-Type': 'application/json'
         }
       });
       const data = await response.json();
-      if (data.success) {
-        showAlert("Задача отменена", "info");
+
+      // Check for success flag OR valid status values
+      if (data.success || data.status === "cancelled" || data.status === "already_cancelled") {
+        if (data.status === "already_cancelled") {
+          showAlert("Задача уже была отменена", "info");
+        } else {
+          showAlert("Задача отменена", "info");
+        }
         loadTasks();
       } else {
-        showAlert("Ошибка: " + data.error, "danger");
+        showAlert("Ошибка: " + (data.error || "Неизвестная ошибка"), "danger");
       }
     } catch (error) {
       showAlert("Ошибка сети", "danger");
