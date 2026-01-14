@@ -20,7 +20,7 @@ class CustomLogger:
             datefmt='%Y-%m-%d %H:%M:%S'
         )
 
-        # Файл для всех логов
+        # Файл для всех логов (legacy)
         all_logs_file = os.path.join(self.log_dir, 'all_logs.txt')
         all_handler = RotatingFileHandler(
             all_logs_file,
@@ -32,7 +32,19 @@ class CustomLogger:
         all_handler.setFormatter(formatter)
         self.logger.addHandler(all_handler)
 
-        # Файл для ошибок
+        # Файл для отладочных логов (DEBUG+)
+        debug_logs_file = os.path.join(self.log_dir, 'debug.txt')
+        debug_handler = RotatingFileHandler(
+            debug_logs_file,
+            maxBytes=10*1024*1024,
+            backupCount=5,
+            encoding='utf-8'
+        )
+        debug_handler.setLevel(logging.DEBUG)
+        debug_handler.setFormatter(formatter)
+        self.logger.addHandler(debug_handler)
+
+        # Файл для ошибок (ERROR+)
         error_logs_file = os.path.join(self.log_dir, 'errors.txt')
         error_handler = RotatingFileHandler(
             error_logs_file,
@@ -102,30 +114,39 @@ class CustomLogger:
         except Exception:
             pass
 
+    def _log(self, level, msg, *args, **kwargs):
+        self._ensure_dir()
+        exc_info = kwargs.pop('exc_info', None)
+        stack_info = kwargs.pop('stack_info', None)
+        extra = kwargs.pop('extra', None)
+        self.logger.log(
+            level,
+            self._format_message(msg, kwargs),
+            *args,
+            exc_info=exc_info,
+            stack_info=stack_info,
+            extra=extra,
+        )
+
     def debug(self, msg, *args, **kwargs):
         """Debug уровень"""
-        self._ensure_dir()
-        self.logger.debug(self._format_message(msg, kwargs), *args)
-    
+        self._log(logging.DEBUG, msg, *args, **kwargs)
+
     def info(self, msg, *args, **kwargs):
         """Info уровень"""
-        self._ensure_dir()
-        self.logger.info(self._format_message(msg, kwargs), *args)
-    
+        self._log(logging.INFO, msg, *args, **kwargs)
+
     def warning(self, msg, *args, **kwargs):
         """Warning уровень"""
-        self._ensure_dir()
-        self.logger.warning(self._format_message(msg, kwargs), *args)
-    
+        self._log(logging.WARNING, msg, *args, **kwargs)
+
     def error(self, msg, *args, **kwargs):
         """Error уровень"""
-        self._ensure_dir()
-        self.logger.error(self._format_message(msg, kwargs), *args)
-    
+        self._log(logging.ERROR, msg, *args, **kwargs)
+
     def critical(self, msg, *args, **kwargs):
         """Critical уровень"""
-        self._ensure_dir()
-        self.logger.critical(self._format_message(msg, kwargs), *args)
+        self._log(logging.CRITICAL, msg, *args, **kwargs)
     
     def _format_message(self, message, kwargs):
         """Форматирование сообщения с дополнительными данными"""
@@ -190,9 +211,18 @@ def init_logger(name='telegram_sender', log_dir='logs'):
     return app_logger
 
 
-def get_logger():
+def get_logger(name='telegram_sender', log_dir='logs'):
     """Получить глобальный логгер"""
     global app_logger
+
+    normalized_log_dir = log_dir
+    if not os.path.isabs(normalized_log_dir):
+        normalized_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), normalized_log_dir)
+
     if app_logger is None:
-        app_logger = init_logger()
+        app_logger = CustomLogger(name, log_dir)
+    else:
+        current_log_dir = getattr(app_logger, 'log_dir', None)
+        if getattr(app_logger, 'name', None) != name or current_log_dir != normalized_log_dir:
+            app_logger = CustomLogger(name, log_dir)
     return app_logger
