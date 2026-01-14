@@ -1768,6 +1768,47 @@ def toggle_scheduled_task(task_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
+@app.route('/api/scheduler/task/<int:task_id>/cancel', methods=['POST'])
+@login_required
+@telegram_auth_required
+@csrf.exempt
+def cancel_task(task_id):
+    """Отмена выполнения задачи"""
+    try:
+        # Защита от перебора ID - проверяем, что задача принадлежит текущему пользователю
+        task = ScheduledTask.query.filter_by(id=task_id, user_id=current_user.id).first()
+        if not task:
+            return jsonify({'success': False, 'error': 'Task not found or access denied'}), 404
+        
+        from sqlalchemy import text
+        
+        # 1. Помечаем задачу как отмененную
+        task.was_cancelled = True
+        task.is_active = False
+        
+        # 2. Отменяем все pending слоты
+        db.session.execute(
+            text("UPDATE scheduled_time_slots SET status = 'cancelled' WHERE task_id = :task_id AND status = 'pending'"),
+            {"task_id": task_id}
+        )
+        
+        # 3. Помечаем все executing слоты для отмены (их обработка прекратится)
+        db.session.execute(
+            text("UPDATE scheduled_time_slots SET status = 'executing' WHERE task_id = :task_id AND status = 'executing'"),
+            {"task_id": task_id}
+        )
+        
+        db.session.commit()
+        
+        logger.log_scheduler_action("Отмена задачи", task_id=task_id, details="Success")
+        return jsonify({'success': True, 'message': 'Task cancelled successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error cancelling task {task_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/api/telegram/groups/<int:group_id>/v2/topics')
 @login_required
 @telegram_auth_required
