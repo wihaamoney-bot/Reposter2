@@ -182,13 +182,13 @@ class TaskService:
                                         logger.warning(f"Ошибка парсинга изображений для слота {slot_id}: {e}")
                                         # Продолжаем без изображений
                                 
-                                # ALWAYS use caption for ONE message with image + text
+                                # Send image(s) with caption using send_file (correct Telethon syntax)
                                 if f_send and txt:
-                                    # Send image with caption in ONE message
-                                    await manager.client.send_message(peer, file=f_send, caption=txt, parse_mode='html')
+                                    # Image(s) + text (caption) - use send_file with caption
+                                    await manager.client.send_file(peer, f_send, caption=txt, parse_mode='html')
                                 elif f_send:
-                                    # Image only, no caption
-                                    await manager.client.send_message(peer, file=f_send)
+                                    # Image(s) only, no caption
+                                    await manager.client.send_file(peer, f_send)
                                 elif txt:
                                     # Text only, no image
                                     await manager.client.send_message(peer, txt, parse_mode='html')
