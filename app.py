@@ -1518,9 +1518,23 @@ def get_scheduled_tasks():
         for task in tasks:
             slots = []
             executing_slot_index = None
+            last_completed_slot_index = None
+            executing_slot_id = None
+            current_slot_db_id = None
+            
+            # Проходим по слотам и находим:
+            # 1. Текущий выполняемый слот (executing)
+            # 2. Последний завершенный слот (completed)
             for idx, slot in enumerate(task.time_slots.order_by(ScheduledTimeSlot.scheduled_datetime.asc())):
+                # Ищем executing слот
                 if slot.status == 'executing':
                     executing_slot_index = idx
+                    executing_slot_id = slot.id
+                
+                # Запоминаем последний завершенный
+                if slot.status == 'completed' or slot.status == 'completed_with_errors':
+                    last_completed_slot_index = idx
+                
                 slots.append({
                     'id': slot.id,
                     'datetime': slot.scheduled_datetime.isoformat(),
@@ -1531,9 +1545,24 @@ def get_scheduled_tasks():
                     'percentage': round((slot.processed_recipients / slot.total_recipients * 100), 1) if slot.total_recipients > 0 else 100
                 })
             
-            # Get recipients status with slot info
-            executing_slot_id = slots[executing_slot_index]['id'] if executing_slot_index is not None else None
-            current_slot_index = (executing_slot_index + 1) if executing_slot_index is not None else 1
+            # Определяем текущий индекс (плавный прогресс)
+            # Приоритет:
+            # 1. Если есть executing слот - это текущий
+            # 2. Иначе - последний завершенный слот
+            # 3. Иначе - индекс 0 (ничего не начиналось)
+            
+            if executing_slot_index is not None:
+                # Есть выполняющийся слот
+                current_slot_index = executing_slot_index + 1
+                current_slot_db_id = executing_slot_id
+            elif last_completed_slot_index is not None:
+                # Нет executing, но есть завершенные
+                current_slot_index = last_completed_slot_index + 1
+                current_slot_db_id = slots[last_completed_slot_index]['id']
+            else:
+                # Ничего еще не начиналось
+                current_slot_index = 0
+                current_slot_db_id = None
             
             result.append({
                 'id': task.id,
@@ -1543,10 +1572,14 @@ def get_scheduled_tasks():
                 'has_image': bool(task.image_path),
                 'telegram_account': task.telegram_username or 'Неизвестно',
                 'slots': slots,
-                'recipients_info': get_task_recipients_status(task.id, slot_id=executing_slot_id, current_slot_index=current_slot_index, total_slots=len(slots))
+                'recipients_info': get_task_recipients_status(
+                    task.id,
+                    current_slot_db_id=current_slot_db_id,
+                    current_slot_index=current_slot_index,
+                    total_slots=len(slots)
+                )
             })
         
-        # Get refresh interval from config
         refresh_interval_ms = config.get('scheduler', {}).get('active_tasks_refresh_interval_ms', 2000)
         
         return jsonify({'success': True, 'tasks': result, 'refresh_interval_ms': refresh_interval_ms})
@@ -1554,14 +1587,17 @@ def get_scheduled_tasks():
         logger.error(f"Error in get_scheduled_tasks: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-def get_task_recipients_status(task_id, slot_id=None, current_slot_index=None, total_slots=None):
-    """Собирает актуальный статус по каждому получателю для задачи
+def get_task_recipients_status(task_id, current_slot_db_id=None, current_slot_index=None, total_slots=None):
+    """
+    Собирает статистику по получателям для задачи.
     
-    Args:
-        task_id: ID задачи
-        slot_id: ID конкретного слота (для активных задач - текущий выполняемый слот)
-        current_slot_index: Порядковый номер текущего слота (1-based)
-        total_slots: Общее количество слотов
+    Для АКТИВНЫХ задач (current_slot_db_id != None):
+        - Берет сообщения из всех выполненных слотов (ДО ТЕКУЩЕГО ВКЛЮЧИТЕЛЬНО)
+        - Статистика показывает прогресс по выполненным слотам
+    
+    Для ЗАВЕРШЕННЫХ задач (current_slot_db_id == None):
+        - Берет сообщения из ВСЕХ слотов
+        - Статистика показывает финальный результат
     """
     task = db.session.get(ScheduledTask, task_id)
     if not task:
@@ -1570,7 +1606,7 @@ def get_task_recipients_status(task_id, slot_id=None, current_slot_index=None, t
     try:
         from models import SentMessage, ScheduledTimeSlot
         
-        # 1. Получаем метаданные (имена) из recipients_info задачи
+        # 1. Получаем метаданные получателей (имена)
         recipients_meta = {}
         if task.recipients_info:
             try:
@@ -1580,26 +1616,30 @@ def get_task_recipients_status(task_id, slot_id=None, current_slot_index=None, t
                         recipients_meta[str(item['id'])] = item.get('name') or item.get('title') or item.get('username')
             except:
                 pass
-
-        # 2. Получаем записи из sent_messages
-        if slot_id:
-            # Для активных задач - только по текущему слоту
-            sent_messages = db.session.query(SentMessage).filter(
-                SentMessage.slot_id == slot_id
-            ).all()
+        
+        # 2. Правильно берем сообщения
+        if current_slot_db_id:
+            # АКТИВНЫЕ ЗАДАЧИ
+            # Берем текущий слот из БД
+            current_slot = db.session.get(ScheduledTimeSlot, current_slot_db_id)
+            
+            if current_slot:
+                # Берем ВСЕ сообщения из слотов ДО ТЕКУЩЕГО (по времени)
+                # Это гарантирует статистику только выполненных слотов
+                sent_messages = db.session.query(SentMessage).join(ScheduledTimeSlot).filter(
+                    ScheduledTimeSlot.task_id == task_id,
+                    ScheduledTimeSlot.scheduled_datetime <= current_slot.scheduled_datetime
+                ).all()
+            else:
+                sent_messages = []
         else:
-            # Для завершенных задач - все слоты
+            # ЗАВЕРШЕННЫЕ ЗАДАЧИ
+            # Берем ВСЕ сообщения по задаче
             sent_messages = db.session.query(SentMessage).join(ScheduledTimeSlot).filter(
                 ScheduledTimeSlot.task_id == task_id
             ).all()
         
-        # ✅ ПРАВИЛЬНО: Группируем по recipient_id
-        is_task_cancelled = task.was_cancelled
-        
-        # 4. Собираем итоговый список на основе исходного списка получателей
-        recipients_ids = json.loads(task.recipients)
-        
-        # ✅ ПРАВИЛЬНО: Группируем по recipient_id
+        # 3. Группируем по recipient_id (подсчитываем для КАЖДОГО контакта)
         recipient_stats = {}
         for sm in sent_messages:
             r_id = str(sm.recipient_id)
@@ -1620,9 +1660,12 @@ def get_task_recipients_status(task_id, slot_id=None, current_slot_index=None, t
             elif sm.status == 'cancelled':
                 recipient_stats[r_id]['cancelled'] += 1
             
-            # Запоминаем последний статус и ошибку
+            # Запоминаем последний статус (для текущего слота)
             recipient_stats[r_id]['last_status'] = sm.status
             recipient_stats[r_id]['last_error'] = sm.error_message
+        
+        is_task_cancelled = task.was_cancelled
+        recipients_ids = json.loads(task.recipients)
         
         result = []
         for r in recipients_ids:
@@ -1631,7 +1674,7 @@ def get_task_recipients_status(task_id, slot_id=None, current_slot_index=None, t
             else:
                 r_id = str(r.get('id'))
             
-            # ✅ КАЖДЫЙ контакт получает СВОЮ статистику
+            # Берем СВОЮ статистику для каждого контакта
             stats = recipient_stats.get(r_id, {
                 'sent': 0,
                 'failed': 0,
@@ -1641,27 +1684,26 @@ def get_task_recipients_status(task_id, slot_id=None, current_slot_index=None, t
             })
             
             if stats['last_status']:
-                # Если запись в sent_messages есть - берем статус оттуда
                 r_status = stats['last_status']
                 r_error = stats['last_error']
-                r_name = recipients_meta.get(r_id) or r_id
             else:
-                # Если записи нет - статус зависит от отмены задачи
                 r_status = 'cancelled' if is_task_cancelled else 'pending'
                 r_error = None
-                r_name = recipients_meta.get(r_id) or r_id
+            
+            r_name = recipients_meta.get(r_id) or r_id
             
             result.append({
                 'id': r_id,
                 'name': r_name,
                 'status': r_status,
                 'error': r_error,
-                'sent_count': stats['sent'],              # ✅ СВОЯ статистика для контакта!
-                'error_count': stats['failed'],           # ✅ СВОЯ статистика для контакта!
-                'cancelled_count': stats['cancelled'],    # ✅ СВОЯ статистика для контакта!
+                'sent_count': stats['sent'],
+                'error_count': stats['failed'],
+                'cancelled_count': stats['cancelled'],
                 'current_slot_index': current_slot_index,
                 'total_slots': total_slots
             })
+        
         return result
     except Exception as e:
         logger.error(f"Error gathering recipients status for task {task_id}: {e}")
@@ -1792,7 +1834,7 @@ def get_completed_tasks():
                 'total_slots': total_slots,
                 'has_image': bool(task.image_path),
                 'is_scheduled': True, # Это задачи из планировщика
-                'recipients_info': get_task_recipients_status(task.id, slot_id=None, current_slot_index=total_slots, total_slots=total_slots),
+                'recipients_info': get_task_recipients_status(task.id, current_slot_db_id=None, current_slot_index=total_slots, total_slots=total_slots),
                 'time_slots': [{
                     'id': s.id,
                     'datetime': s.scheduled_datetime.isoformat(),
