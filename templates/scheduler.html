@@ -114,9 +114,17 @@
     <div class="card mb-4">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-list-task"></i> Активные задачи</span>
-        <button class="btn btn-sm btn-outline-primary" onclick="loadTasks()">
-          <i class="bi bi-arrow-clockwise"></i> Обновить
-        </button>
+        <div class="d-flex align-items-center gap-2">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="autoUpdateActiveCheckbox" checked onchange="toggleAutoUpdate('active')">
+            <label class="form-check-label" for="autoUpdateActiveCheckbox">
+              Авто-обновление
+            </label>
+          </div>
+          <button class="btn btn-sm btn-outline-primary" onclick="loadTasks()">
+            <i class="bi bi-arrow-clockwise"></i> Обновить
+          </button>
+        </div>
       </div>
       <div class="card-body">
         <div id="tasksList">
@@ -133,9 +141,17 @@
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-check2-circle"></i> Выполненные задачи</span>
-        <button class="btn btn-sm btn-outline-success" onclick="loadCompletedTasks()">
-          <i class="bi bi-arrow-clockwise"></i> Обновить
-        </button>
+        <div class="d-flex align-items-center gap-2">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="autoUpdateCompletedCheckbox" checked onchange="toggleAutoUpdate('completed')">
+            <label class="form-check-label" for="autoUpdateCompletedCheckbox">
+              Авто-обновление
+            </label>
+          </div>
+          <button class="btn btn-sm btn-outline-success" onclick="loadCompletedTasks()">
+            <i class="bi bi-arrow-clockwise"></i> Обновить
+          </button>
+        </div>
       </div>
       <div class="card-body">
         <div id="completedTasksList">
@@ -227,6 +243,12 @@
   let schedulerGroupTopics = {};
   let schedulerCurrentTopicGroupId = null;
 
+  // Auto-refresh state
+  let activeTasksInterval = null;
+  let completedTasksInterval = null;
+  let activeRefreshIntervalMs = 2000;  // default value
+  let completedRefreshIntervalMs = 5000; // default value
+
   document.addEventListener("DOMContentLoaded", function () {
     startDateTimeUpdater('dateDisplay', 'timeDisplay');
 
@@ -299,6 +321,18 @@
 
     loadTasks();
     loadCompletedTasks();
+    
+    // Start auto-refresh after initial load
+    setTimeout(() => {
+      toggleAutoUpdate('active');
+      toggleAutoUpdate('completed');
+    }, 500);
+  });
+
+  // Cleanup intervals on page unload
+  window.addEventListener('beforeunload', function() {
+    if (activeTasksInterval) clearInterval(activeTasksInterval);
+    if (completedTasksInterval) clearInterval(completedTasksInterval);
   });
 
   /**
@@ -644,7 +678,7 @@
     }
   });
 
-  function renderRecipientsStatus(recipientsInfo) {
+  function renderRecipientsStatus(recipientsInfo, isCompleted = false, taskSlots = null) {
     if (!recipientsInfo || !recipientsInfo.length) return '<p class="text-muted small mb-0">Список получателей пуст</p>';
     
     let html = '<div class="list-group list-group-flush">';
@@ -655,9 +689,45 @@
       
       // The API returns recipient status in 'status' field
       // We check for 'status' or fall back to 'pending'
-      const status = r.status || 'pending';
+      let status = r.status || 'pending';
       const error = r.error || null;
       const name = r.name || r.id || r.recipient_id || 'Unknown';
+      
+      // Smart switching logic for active tasks (50% time between slots)
+      if (!isCompleted && taskSlots && taskSlots.length > 0) {
+        // Find current executing or completed slot
+        const currentSlotIndex = taskSlots.findIndex(s => s.status === 'executing');
+        let checkSlotIndex = currentSlotIndex;
+        
+        // If no executing slot, find the last completed slot
+        if (checkSlotIndex === -1) {
+          for (let i = taskSlots.length - 1; i >= 0; i--) {
+            if (taskSlots[i].status === 'completed') {
+              checkSlotIndex = i;
+              break;
+            }
+          }
+        }
+        
+        // If we have a completed slot and there's a next slot
+        if (checkSlotIndex !== -1 && checkSlotIndex < taskSlots.length - 1) {
+          const currentSlot = taskSlots[checkSlotIndex];
+          const nextSlot = taskSlots[checkSlotIndex + 1];
+          
+          if (currentSlot.status === 'completed' && nextSlot) {
+            const currentSlotTime = new Date(currentSlot.datetime).getTime();
+            const nextSlotTime = new Date(nextSlot.datetime).getTime();
+            const timeDiff = nextSlotTime - currentSlotTime;
+            const midTime = currentSlotTime + (timeDiff / 2);
+            const now = Date.now();
+            
+            // If we're past the midpoint, show "Ожидает" status
+            if (now > midTime && status === 'sent') {
+              status = 'pending';
+            }
+          }
+        }
+      }
       
       if (status === 'sent') {
         icon = 'bi-check-circle-fill';
@@ -675,12 +745,25 @@
       
       const errorText = error ? ` — ${error}` : '';
       
+      // Get slot info and statistics from recipient data
+      const currentSlotIndex = r.current_slot_index || null;
+      const totalSlots = r.total_slots || null;
+      const sentCount = r.sent_count || 0;
+      const errorCount = r.error_count || 0;
+      const cancelledCount = r.cancelled_count || 0;
+      
+      let slotInfo = '';
+      if (currentSlotIndex && totalSlots) {
+        slotInfo = `<span class="text-muted">Слот ${currentSlotIndex}/${totalSlots} [${sentCount}/${errorCount}/${cancelledCount}]</span>`;
+      }
+      
       html += `
-        <div class="list-group-item bg-transparent d-flex align-items-center py-1 px-0 border-0 small">
-          <i class="bi ${icon} ${color} me-2" title="${statusLabel}${errorText}"></i>
-          <span class="text-truncate flex-grow-1" style="max-width: 200px;">
+        <div class="list-group-item bg-transparent d-flex justify-content-between align-items-center py-1 px-0 border-0 small">
+          <span class="text-truncate" style="max-width: 250px;">
+            <i class="bi ${icon} ${color} me-2" title="${statusLabel}${errorText}"></i>
             <strong>${UIUtils.escapeHtml(name)}</strong> — <span class="${color}">${statusLabel}${UIUtils.escapeHtml(errorText)}</span>
           </span>
+          ${slotInfo}
         </div>
       `;
     });
@@ -694,6 +777,10 @@
       const data = await response.json();
 
       if (data.success) {
+        // Update refresh interval if provided
+        if (data.refresh_interval_ms) {
+          activeRefreshIntervalMs = data.refresh_interval_ms;
+        }
         displayTasks(data.tasks);
       } else {
         showAlert("Ошибка загрузки задач: " + data.error, "danger");
@@ -719,7 +806,7 @@
         : task.message_text;
 
       const tgAccount = task.telegram_account || 'Неизвестно';
-      const recipientsHtml = renderRecipientsStatus(task.recipients_info);
+      const recipientsHtml = renderRecipientsStatus(task.recipients_info, false, task.slots);
       
       let slotsHtml = '';
       if (task.slots && task.slots.length > 0) {
@@ -1040,12 +1127,48 @@
       const data = await response.json();
 
       if (data.success) {
+        // Update refresh interval if provided
+        if (data.refresh_interval_ms) {
+          completedRefreshIntervalMs = data.refresh_interval_ms;
+        }
         displayCompletedTasks(data.tasks);
       } else {
         showAlert("Ошибка загрузки выполненных задач: " + data.error, "danger");
       }
     } catch (error) {
       showAlert("Ошибка загрузки выполненных задач: " + error.message, "danger");
+    }
+  }
+
+  function toggleAutoUpdate(type) {
+    if (type === 'active') {
+      const checkbox = document.getElementById('autoUpdateActiveCheckbox');
+      if (checkbox && checkbox.checked) {
+        // Enable auto-update
+        if (!activeTasksInterval) {
+          activeTasksInterval = setInterval(loadTasks, activeRefreshIntervalMs);
+        }
+      } else {
+        // Disable auto-update
+        if (activeTasksInterval) {
+          clearInterval(activeTasksInterval);
+          activeTasksInterval = null;
+        }
+      }
+    } else if (type === 'completed') {
+      const checkbox = document.getElementById('autoUpdateCompletedCheckbox');
+      if (checkbox && checkbox.checked) {
+        // Enable auto-update
+        if (!completedTasksInterval) {
+          completedTasksInterval = setInterval(loadCompletedTasks, completedRefreshIntervalMs);
+        }
+      } else {
+        // Disable auto-update
+        if (completedTasksInterval) {
+          clearInterval(completedTasksInterval);
+          completedTasksInterval = null;
+        }
+      }
     }
   }
 
@@ -1066,7 +1189,7 @@
         ? task.message_text.substring(0, 50) + "..." 
         : task.message_text;
       
-      const recipientsHtml = renderRecipientsStatus(task.recipients_info);
+      const recipientsHtml = renderRecipientsStatus(task.recipients_info, true, task.time_slots);
       
       let statusBadge = '';
       let typeBadge = '';

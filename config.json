@@ -12,6 +12,10 @@
     "delay_between_messages": 15,
     "min_delay_for_groups": 17
   },
+  "scheduler": {
+    "active_tasks_refresh_interval_ms": 2000,
+    "completed_tasks_refresh_interval_ms": 5000
+  },
   "cleanup": {
     "image_cache_days": 2,
     "completed_tasks_months": 1,

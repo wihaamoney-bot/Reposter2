@@ -1505,7 +1505,10 @@ def get_scheduled_tasks():
         result = []
         for task in tasks:
             slots = []
-            for slot in task.time_slots.order_by(ScheduledTimeSlot.scheduled_datetime.asc()):
+            executing_slot_index = None
+            for idx, slot in enumerate(task.time_slots.order_by(ScheduledTimeSlot.scheduled_datetime.asc())):
+                if slot.status == 'executing':
+                    executing_slot_index = idx
                 slots.append({
                     'id': slot.id,
                     'datetime': slot.scheduled_datetime.isoformat(),
@@ -1515,6 +1518,11 @@ def get_scheduled_tasks():
                     'processed': slot.processed_recipients,
                     'percentage': round((slot.processed_recipients / slot.total_recipients * 100), 1) if slot.total_recipients > 0 else 100
                 })
+            
+            # Get recipients status with slot info
+            executing_slot_id = slots[executing_slot_index]['id'] if executing_slot_index is not None else None
+            current_slot_index = (executing_slot_index + 1) if executing_slot_index is not None else 1
+            
             result.append({
                 'id': task.id,
                 'display_id': task_numbers.get(task.id, task.id),
@@ -1523,15 +1531,26 @@ def get_scheduled_tasks():
                 'has_image': bool(task.image_path),
                 'telegram_account': task.telegram_username or 'Неизвестно',
                 'slots': slots,
-                'recipients_info': get_task_recipients_status(task.id)
+                'recipients_info': get_task_recipients_status(task.id, slot_id=executing_slot_id, current_slot_index=current_slot_index, total_slots=len(slots))
             })
-        return jsonify({'success': True, 'tasks': result})
+        
+        # Get refresh interval from config
+        refresh_interval_ms = config.get('scheduler', {}).get('active_tasks_refresh_interval_ms', 2000)
+        
+        return jsonify({'success': True, 'tasks': result, 'refresh_interval_ms': refresh_interval_ms})
     except Exception as e:
         logger.error(f"Error in get_scheduled_tasks: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-def get_task_recipients_status(task_id):
-    """Собирает актуальный статус по каждому получателю для задачи"""
+def get_task_recipients_status(task_id, slot_id=None, current_slot_index=None, total_slots=None):
+    """Собирает актуальный статус по каждому получателю для задачи
+    
+    Args:
+        task_id: ID задачи
+        slot_id: ID конкретного слота (для активных задач - текущий выполняемый слот)
+        current_slot_index: Порядковый номер текущего слота (1-based)
+        total_slots: Общее количество слотов
+    """
     task = db.session.get(ScheduledTask, task_id)
     if not task:
         return []
@@ -1550,11 +1569,17 @@ def get_task_recipients_status(task_id):
             except:
                 pass
 
-        # 2. Получаем все записи из sent_messages для этой задачи
-        # Используем join с ScheduledTimeSlot для фильтрации по задаче
-        sent_messages = db.session.query(SentMessage).join(ScheduledTimeSlot).filter(
-            ScheduledTimeSlot.task_id == task_id
-        ).all()
+        # 2. Получаем записи из sent_messages
+        if slot_id:
+            # Для активных задач - только по текущему слоту
+            sent_messages = db.session.query(SentMessage).filter(
+                SentMessage.slot_id == slot_id
+            ).all()
+        else:
+            # Для завершенных задач - все слоты
+            sent_messages = db.session.query(SentMessage).join(ScheduledTimeSlot).filter(
+                ScheduledTimeSlot.task_id == task_id
+            ).all()
         
         # Индексируем по recipient_id для быстрого поиска
         status_map = {sm.recipient_id: {'status': sm.status, 'error': sm.error_message} for sm in sent_messages}
@@ -1564,6 +1589,11 @@ def get_task_recipients_status(task_id):
         
         # 4. Собираем итоговый список на основе исходного списка получателей
         recipients_ids = json.loads(task.recipients)
+        
+        # 5. Подсчитываем статистику (один раз для всех)
+        sent_count = sum(1 for sm in sent_messages if sm.status == 'sent')
+        error_count = sum(1 for sm in sent_messages if sm.status == 'failed')
+        cancelled_count = sum(1 for sm in sent_messages if sm.status == 'cancelled')
         
         result = []
         for r in recipients_ids:
@@ -1588,7 +1618,12 @@ def get_task_recipients_status(task_id):
                 'id': r_id,
                 'name': r_name,
                 'status': r_status,
-                'error': r_error
+                'error': r_error,
+                'sent_count': sent_count,
+                'error_count': error_count,
+                'cancelled_count': cancelled_count,
+                'current_slot_index': current_slot_index,
+                'total_slots': total_slots
             })
         return result
     except Exception as e:
@@ -1720,7 +1755,7 @@ def get_completed_tasks():
                 'total_slots': total_slots,
                 'has_image': bool(task.image_path),
                 'is_scheduled': True, # Это задачи из планировщика
-                'recipients_info': get_task_recipients_status(task.id),
+                'recipients_info': get_task_recipients_status(task.id, slot_id=None, current_slot_index=total_slots, total_slots=total_slots),
                 'time_slots': [{
                     'id': s.id,
                     'datetime': s.scheduled_datetime.isoformat(),
@@ -1731,7 +1766,11 @@ def get_completed_tasks():
                     'sent_at': s.sent_at.isoformat() if s.sent_at else None
                 } for s in slots]
             })
-        return jsonify({'success': True, 'tasks': result})
+        
+        # Get refresh interval from config
+        refresh_interval_ms = config.get('scheduler', {}).get('completed_tasks_refresh_interval_ms', 5000)
+        
+        return jsonify({'success': True, 'tasks': result, 'refresh_interval_ms': refresh_interval_ms})
     except Exception as e:
         logger.error(f"Ошибка получения выполненных задач: {e}")
         return jsonify({'success': False, 'error': str(e)})
