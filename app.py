@@ -56,6 +56,10 @@ migrate = Migrate(app, db)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
+# Интервалы авто-обновления планировщика
+ACTIVE_TASKS_REFRESH_INTERVAL = 2000
+COMPLETED_TASKS_REFRESH_INTERVAL = 5000
+
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 db.init_app(app)
@@ -98,6 +102,14 @@ try:
     
     logger.info("Конфигурация загружена успешно")
     logger.debug(f"API ID: {'SET' if config['telegram'].get('api_id') else 'NOT SET'}")
+    
+    # Извлекаем конфигурацию планировщика
+    scheduler_config = config.get('scheduler', {})
+    ACTIVE_TASKS_REFRESH_INTERVAL = scheduler_config.get('active_tasks_refresh_interval_ms', 2000)
+    COMPLETED_TASKS_REFRESH_INTERVAL = scheduler_config.get('completed_tasks_refresh_interval_ms', 5000)
+    
+    logger.info(f"Планировщик: активные задачи обновляются каждые {ACTIVE_TASKS_REFRESH_INTERVAL}ms")
+    logger.info(f"Планировщик: завершенные задачи обновляются каждые {COMPLETED_TASKS_REFRESH_INTERVAL}ms")
 except Exception as e:
     logger.critical(f"Ошибка загрузки конфигурации: {e}")
     raise
@@ -1581,19 +1593,36 @@ def get_task_recipients_status(task_id, slot_id=None, current_slot_index=None, t
                 ScheduledTimeSlot.task_id == task_id
             ).all()
         
-        # Индексируем по recipient_id для быстрого поиска
-        status_map = {sm.recipient_id: {'status': sm.status, 'error': sm.error_message} for sm in sent_messages}
-        
-        # 3. Определяем, отменена ли задача
+        # ✅ ПРАВИЛЬНО: Группируем по recipient_id
         is_task_cancelled = task.was_cancelled
         
         # 4. Собираем итоговый список на основе исходного списка получателей
         recipients_ids = json.loads(task.recipients)
         
-        # 5. Подсчитываем статистику (один раз для всех)
-        sent_count = sum(1 for sm in sent_messages if sm.status == 'sent')
-        error_count = sum(1 for sm in sent_messages if sm.status == 'failed')
-        cancelled_count = sum(1 for sm in sent_messages if sm.status == 'cancelled')
+        # ✅ ПРАВИЛЬНО: Группируем по recipient_id
+        recipient_stats = {}
+        for sm in sent_messages:
+            r_id = str(sm.recipient_id)
+            if r_id not in recipient_stats:
+                recipient_stats[r_id] = {
+                    'sent': 0,
+                    'failed': 0,
+                    'cancelled': 0,
+                    'last_status': None,
+                    'last_error': None
+                }
+            
+            # Подсчитываем для ЭТОГО контакта
+            if sm.status == 'sent':
+                recipient_stats[r_id]['sent'] += 1
+            elif sm.status == 'failed':
+                recipient_stats[r_id]['failed'] += 1
+            elif sm.status == 'cancelled':
+                recipient_stats[r_id]['cancelled'] += 1
+            
+            # Запоминаем последний статус и ошибку
+            recipient_stats[r_id]['last_status'] = sm.status
+            recipient_stats[r_id]['last_error'] = sm.error_message
         
         result = []
         for r in recipients_ids:
@@ -1602,11 +1631,19 @@ def get_task_recipients_status(task_id, slot_id=None, current_slot_index=None, t
             else:
                 r_id = str(r.get('id'))
             
-            info = status_map.get(r_id)
-            if info:
+            # ✅ КАЖДЫЙ контакт получает СВОЮ статистику
+            stats = recipient_stats.get(r_id, {
+                'sent': 0,
+                'failed': 0,
+                'cancelled': 0,
+                'last_status': None,
+                'last_error': None
+            })
+            
+            if stats['last_status']:
                 # Если запись в sent_messages есть - берем статус оттуда
-                r_status = info['status']
-                r_error = info['error']
+                r_status = stats['last_status']
+                r_error = stats['last_error']
                 r_name = recipients_meta.get(r_id) or r_id
             else:
                 # Если записи нет - статус зависит от отмены задачи
@@ -1619,9 +1656,9 @@ def get_task_recipients_status(task_id, slot_id=None, current_slot_index=None, t
                 'name': r_name,
                 'status': r_status,
                 'error': r_error,
-                'sent_count': sent_count,
-                'error_count': error_count,
-                'cancelled_count': cancelled_count,
+                'sent_count': stats['sent'],              # ✅ СВОЯ статистика для контакта!
+                'error_count': stats['failed'],           # ✅ СВОЯ статистика для контакта!
+                'cancelled_count': stats['cancelled'],    # ✅ СВОЯ статистика для контакта!
                 'current_slot_index': current_slot_index,
                 'total_slots': total_slots
             })

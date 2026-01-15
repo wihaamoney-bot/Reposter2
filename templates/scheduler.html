@@ -754,7 +754,10 @@
       
       let slotInfo = '';
       if (currentSlotIndex && totalSlots) {
-        slotInfo = `<span class="text-muted">Слот ${currentSlotIndex}/${totalSlots} [${sentCount}/${errorCount}/${cancelledCount}]</span>`;
+        slotInfo = `<span class="text-muted">Слот ${currentSlotIndex}/${totalSlots} 
+          [<span class="text-success fw-bold">${sentCount}</span>/
+           <span class="text-danger fw-bold">${errorCount}</span>/
+           <span class="text-warning fw-bold">${cancelledCount}</span>]</span>`;
       }
       
       html += `
@@ -778,8 +781,16 @@
 
       if (data.success) {
         // Update refresh interval if provided
-        if (data.refresh_interval_ms) {
+        if (data.refresh_interval_ms && data.refresh_interval_ms !== activeRefreshIntervalMs) {
           activeRefreshIntervalMs = data.refresh_interval_ms;
+          // Restart interval with new value if auto-update is enabled
+          const checkbox = document.getElementById('autoUpdateActiveCheckbox');
+          if (checkbox && checkbox.checked) {
+            if (activeTasksInterval) {
+              clearInterval(activeTasksInterval);
+            }
+            activeTasksInterval = setInterval(loadTasks, activeRefreshIntervalMs);
+          }
         }
         displayTasks(data.tasks);
       } else {
@@ -1128,8 +1139,16 @@
 
       if (data.success) {
         // Update refresh interval if provided
-        if (data.refresh_interval_ms) {
+        if (data.refresh_interval_ms && data.refresh_interval_ms !== completedRefreshIntervalMs) {
           completedRefreshIntervalMs = data.refresh_interval_ms;
+          // Restart interval with new value if auto-update is enabled
+          const checkbox = document.getElementById('autoUpdateCompletedCheckbox');
+          if (checkbox && checkbox.checked) {
+            if (completedTasksInterval) {
+              clearInterval(completedTasksInterval);
+            }
+            completedTasksInterval = setInterval(loadCompletedTasks, completedRefreshIntervalMs);
+          }
         }
         displayCompletedTasks(data.tasks);
       } else {
@@ -1145,9 +1164,10 @@
       const checkbox = document.getElementById('autoUpdateActiveCheckbox');
       if (checkbox && checkbox.checked) {
         // Enable auto-update
-        if (!activeTasksInterval) {
-          activeTasksInterval = setInterval(loadTasks, activeRefreshIntervalMs);
+        if (activeTasksInterval) {
+          clearInterval(activeTasksInterval);
         }
+        activeTasksInterval = setInterval(loadTasks, activeRefreshIntervalMs);
       } else {
         // Disable auto-update
         if (activeTasksInterval) {
@@ -1159,9 +1179,10 @@
       const checkbox = document.getElementById('autoUpdateCompletedCheckbox');
       if (checkbox && checkbox.checked) {
         // Enable auto-update
-        if (!completedTasksInterval) {
-          completedTasksInterval = setInterval(loadCompletedTasks, completedRefreshIntervalMs);
+        if (completedTasksInterval) {
+          clearInterval(completedTasksInterval);
         }
+        completedTasksInterval = setInterval(loadCompletedTasks, completedRefreshIntervalMs);
       } else {
         // Disable auto-update
         if (completedTasksInterval) {
