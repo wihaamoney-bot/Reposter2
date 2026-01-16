@@ -6,10 +6,20 @@ const UIUtils = {
         const alertDiv = document.createElement("div");
         alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
         alertDiv.role = "alert";
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
+        
+        // SECURITY: Use textContent for message to prevent XSS
+        const messageSpan = document.createElement("span");
+        messageSpan.textContent = message;
+        
+        alertDiv.appendChild(messageSpan);
+        
+        const closeButton = document.createElement("button");
+        closeButton.type = "button";
+        closeButton.className = "btn-close";
+        closeButton.setAttribute("data-bs-dismiss", "alert");
+        closeButton.setAttribute("aria-label", "Close");
+        
+        alertDiv.appendChild(closeButton);
 
         const container = document.querySelector(".container");
         if (container) {
