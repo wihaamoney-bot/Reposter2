@@ -293,7 +293,8 @@
       const data = await response.json();
 
       if (data.success) {
-        showAlert("Авторизация успешна! Перенаправление...", "success");
+        const message = data.message || "Авторизация успешна! Перенаправление...";
+        showAlert(message, "success");
         setTimeout(() => {
           window.location.href = '{{ url_for("contacts") }}';
         }, 1500);
@@ -315,7 +316,43 @@
   }
 
   async function verifyPassword() {
-    // ... существующий код ...
+    const password = document.getElementById("2fa_password").value.trim();
+    const code = document.getElementById("code").value.trim();
+
+    if (!password) {
+      showAlert("Введите пароль двухфакторной аутентификации", "warning");
+      return;
+    }
+
+    showLoading();
+
+    try {
+      const response = await fetch("/api/telegram/verify_code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ code: code, password: password }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const message = data.message || "Авторизация успешна! Перенаправление...";
+        showAlert(message, "success");
+        setTimeout(() => {
+          window.location.href = '{{ url_for("contacts") }}';
+        }, 1500);
+      } else {
+        hideLoading();
+        document.getElementById("passwordStep").style.display = "block";
+        showAlert("Ошибка: " + data.error, "danger");
+      }
+    } catch (error) {
+      hideLoading();
+      document.getElementById("passwordStep").style.display = "block";
+      showAlert("Ошибка соединения: " + error.message, "danger");
+    }
   }
 
   async function hardReset() {

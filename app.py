@@ -257,8 +257,22 @@ def telegram_auth_required(f):
 @app.route('/')
 def index():
     if current_user.is_authenticated:
-        if current_user.telegram_authorized:
+        # Check and sync session with DB value
+        db_telegram_authorized = current_user.telegram_authorized
+        session_telegram_authorized = session.get('telegram_authorized', False)
+        
+        # If DB says authorized but session doesn't, sync them
+        if db_telegram_authorized and not session_telegram_authorized:
+            logger.info(f"Синхронизация сессии с БД для user_id={current_user.id}: установка telegram_authorized=True")
+            session['telegram_authorized'] = True
+            session.modified = True
+        
+        # Use DB value as source of truth
+        if db_telegram_authorized:
+            logger.debug(f"User {current_user.id} авторизован в Telegram, перенаправление на contacts")
             return redirect(url_for('contacts'))
+        
+        logger.debug(f"User {current_user.id} не авторизован в Telegram, перенаправление на telegram_auth")
         return redirect(url_for('telegram_auth'))
     return redirect(url_for('login'))
 
@@ -294,17 +308,20 @@ def login():
             session['device_id'] = device_id
             session['current_user_id'] = user.id
             
+            # Initialize telegram_authorized from DB instead of always setting to False
+            session['telegram_authorized'] = user.telegram_authorized
+            
             # CRITICAL: Mark session as modified to ensure cookie is sent
             session.modified = True
             
-            # Reset Telegram auth status for this new session
-            session['telegram_authorized'] = False
-            
             logger.info(f"Успешный вход пользователя: {username} (устройство: {device_id})")
+            logger.info(f"Инициализирована сессия с telegram_authorized={user.telegram_authorized} из БД")
             logger.log_response('/login', 200, 'Успешный вход')
             flash('Успешный вход!', 'success')
             
-            response = redirect(url_for('telegram_auth'))
+            # Redirect based on Telegram authorization status
+            next_route = 'contacts' if user.telegram_authorized else 'telegram_auth'
+            response = redirect(url_for(next_route))
             # Дублируем device_id в долгосрочную куку (на 30 дней) для надежности
             response.set_cookie('device_id', device_id, max_age=30*24*60*60, httponly=True, samesite='Lax')
             return response
@@ -406,18 +423,22 @@ def telegram_auth():
             
             # Update session with current Telegram name for header display
             session['telegram_username'] = tg_display_name
-            session.modified = True # Гарантируем сохранение имени в сессии
             
             current_user.telegram_authorized = True
             # Обновляем ID и имя, но больше не блокируем вход при несовпадении
             current_user.telegram_id = me.id
             current_user.telegram_username = tg_display_name
             session['telegram_authorized'] = True
+            
+            # Explicitly mark session as modified to ensure persistence
+            session.modified = True
+            
             db.session.commit()
             
             # Продлеваем жизнь куки устройства при каждом успешном входе в ТГ
             device_id = get_device_id()
             logger.info(f"Telegram сессия активна для пользователя {current_user.id} (TG ID: {me.id}, Device: {device_id})")
+            logger.info(f"Установлен флаг telegram_authorized=True в сессии для user_id={current_user.id}")
             
             response = redirect(url_for('contacts'))
             if device_id:
@@ -697,8 +718,16 @@ def verify_telegram_code():
             AuthCodeHash.query.filter_by(user_id=current_user.id, device_id=device_id).delete()
             
             db.session.commit()
+            
+            # Explicitly mark session as modified to ensure persistence
+            session.modified = True
+            
             logger.info(f"Успешная авторизация в Telegram для: {phone}, ID: {me.id}")
+            logger.info(f"Установлен флаг telegram_authorized=True в сессии для user_id={current_user.id}")
             logger.log_response('/api/telegram/verify_code', 200, 'Авторизация успешна')
+            
+            # Return explicit completion message
+            return jsonify({'success': True, 'message': 'Setup completed'})
         elif result.get('need_password'):
             logger.info(f"Для пользователя {phone} требуется пароль 2FA")
             logger.log_response('/api/telegram/verify_code', 200, 'Need 2FA password')
