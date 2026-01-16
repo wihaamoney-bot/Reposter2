@@ -14,7 +14,7 @@ from models import db, User, ScheduledTask, ScheduledTimeSlot, MessageLog, SentM
 from telegram_client import get_telegram_manager
 from scheduler import init_scheduler, get_scheduler
 from logger import init_logger, get_logger
-from utils import allowed_file, get_user_tz_offset_minutes, local_to_utc, DateTimeEncoder, get_device_id
+from utils import allowed_file, get_user_tz_offset_minutes, local_to_utc, DateTimeEncoder, get_device_id, validate_phone, validate_code, validate_2fa_password
 from flask_wtf.csrf import CSRFProtect
 from flask_migrate import Migrate
 import secrets
@@ -56,6 +56,46 @@ app.config['WTF_CSRF_CHECK_DEFAULT'] = True
 
 csrf = CSRFProtect(app)
 migrate = Migrate(app, db)
+
+
+@app.after_request
+def set_security_headers(response):
+    """
+    SECURITY: Set HTTP security headers for all responses
+    """
+    # Защита от clickjacking
+    response.headers['X-Frame-Options'] = 'DENY'
+    
+    # Защита от MIME sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    
+    # XSS защита браузера
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    
+    # Политика реферера
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    # Content Security Policy
+    # Разрешаем только свой домен и CDN для Bootstrap
+    csp_directives = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net",
+        "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net",
+        "img-src 'self' data: blob:",
+        "font-src 'self' cdn.jsdelivr.net",
+        "connect-src 'self'",
+        "frame-ancestors 'none'",
+        "form-action 'self'"
+    ]
+    response.headers['Content-Security-Policy'] = '; '.join(csp_directives)
+    
+    # Отключаем caching для чувствительных данных
+    if response.status_code >= 400 or '/api/' in request.path:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    
+    return response
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
@@ -214,12 +254,12 @@ def save_idempotent_response(idempotent_key, response_data):
     """Сохраняет ответ для идемпотентного ключа"""
     if not idempotent_key:
         return
-    
+
     try:
         existing = IdempotentRequest.query.filter_by(
             idempotent_key=idempotent_key
         ).first()
-        
+
         if existing:
             existing.response = json.dumps(response_data, cls=DateTimeEncoder)
             existing.is_processing = False
@@ -227,6 +267,25 @@ def save_idempotent_response(idempotent_key, response_data):
             logger.info(f"Ответ сохранен для идемпотентного ключа: {idempotent_key}")
     except Exception as e:
         logger.error(f"Ошибка сохранения ответа идемпотентного ключа: {e}")
+        db.session.rollback()
+
+
+def safe_error_response(error_msg="Произошла ошибка", log_error=True):
+    """
+    SECURITY: Returns a safe error response without exposing internal details
+
+    Args:
+        error_msg: User-friendly error message (in Russian)
+        log_error: Whether to log the actual error
+
+    Returns:
+        Tuple of (dict, status_code)
+    """
+    if log_error:
+        import traceback
+        logger.error(f"Ошибка: {error_msg}", exc_info=True)
+
+    return {'success': False, 'error': error_msg}, 500
 
 
 @app.context_processor
@@ -509,9 +568,16 @@ def send_telegram_code():
     data = request.json
     phone = data.get('phone')
     device_id = get_device_id()
-    
+
     if not phone:
         return jsonify({'success': False, 'error': 'Phone number required'})
+
+    # SECURITY: Validate phone number format
+    try:
+        validate_phone(phone)
+    except ValueError as e:
+        logger.warning(f"Invalid phone format attempt for user {current_user.id}")
+        return jsonify({'success': False, 'error': str(e)})
 
     # Проверка "Умного возврата" - если номер тот же и есть хэш, не запрашиваем API
     active_phone = session.get('tg_phone')
@@ -581,7 +647,8 @@ def send_telegram_code():
     record_rate_limit_attempt(current_user.id, '/api/telegram/send_code', f"phone_{phone}")
     record_rate_limit_attempt(current_user.id, '/api/telegram/send_code', f"ip_{ip_addr}")
     
-    logger.info(f"API запрос на отправку кода: {phone}")
+    # SECURITY: Don't log sensitive phone numbers
+    logger.info(f"API запрос на отправку кода для пользователя {current_user.id}")
     
     try:
         manager = get_user_telegram_manager(current_user.id)
@@ -606,16 +673,18 @@ def send_telegram_code():
             db.session.add(new_hash)
             db.session.commit()
             
-            logger.info(f"Код успешно отправлен на: {phone} (устройство: {device_id})")
+            # SECURITY: Don't log sensitive phone numbers
+            logger.info(f"Код успешно отправлен для пользователя {current_user.id} (устройство: {device_id})")
             logger.log_response('/api/telegram/send_code', 200, 'Код отправлен')
         else:
             logger.error(f"Ошибка отправки кода: {result.get('error')}")
             logger.log_response('/api/telegram/send_code', 500, result.get('error'))
         return jsonify(result)
     except Exception as e:
-        logger.error(f"Исключение при отправке кода: {e}")
-        logger.log_response('/api/telegram/send_code', 500, str(e))
-        return jsonify({'success': False, 'error': str(e)})
+        # SECURITY: Don't expose internal error details to client
+        logger.error(f"Исключение при отправке кода для пользователя {current_user.id}: {e}", exc_info=True)
+        logger.log_response('/api/telegram/send_code', 500, 'Internal error')
+        return safe_error_response("Ошибка при отправке кода")
 
 
 @app.route('/api/telegram/resend_code', methods=['POST'])
@@ -669,38 +738,57 @@ def resend_telegram_code():
 @login_required
 def verify_telegram_code():
     device_id = session.get('device_id', 'default')
-    
+
     # Лимит на ВВОД КОДА на УСТРОЙСТВО: 10 раз в 5 минут
     if not check_rate_limit(current_user.id, '/api/telegram/verify_code', f"dev_{device_id}", limit=10, period=300):
         return jsonify({'success': False, 'error': 'Слишком много попыток с вашего устройства. Подождите 5 минут.'})
-    
+
     # Фиксируем попытку ввода для устройства
     record_rate_limit_attempt(current_user.id, '/api/telegram/verify_code', f"dev_{device_id}")
-    
+
     data = request.json
     code = data.get('code')
     password = data.get('password')
-    
+
+    # SECURITY: Validate code format if provided
+    if code:
+        try:
+            validate_code(code)
+        except ValueError as e:
+            logger.warning(f"Invalid code format attempt for user {current_user.id}")
+            return jsonify({'success': False, 'error': str(e)})
+
+    # SECURITY: Validate 2FA password format if provided
+    if password is not None:
+        try:
+            if not validate_2fa_password(password):
+                # Empty string password is invalid
+                logger.warning(f"Empty password attempt for user {current_user.id}")
+                return jsonify({'success': False, 'error': 'Invalid password'})
+        except ValueError as e:
+            logger.warning(f"Invalid password format attempt for user {current_user.id}")
+            return jsonify({'success': False, 'error': str(e)})
+
     # Ищем хеш именно для этого устройства
     auth_record = AuthCodeHash.query.filter_by(
-        user_id=current_user.id, 
+        user_id=current_user.id,
         device_id=device_id
     ).order_by(AuthCodeHash.created_at.desc()).first()
-    
+
     if not auth_record:
         logger.warning(f"Данные авторизации не найдены для устройства: {device_id}")
         return jsonify({'success': False, 'error': 'Сессия истекла или не найдена. Запросите код заново.'})
-        
+
     phone = auth_record.phone
     phone_code_hash = auth_record.get_phone_code_hash()
 
     # Лимит на ВВОД КОДА для конкретного НОМЕРА: 5 раз в 5 минут
     if not check_rate_limit(current_user.id, '/api/telegram/verify_code', f"phone_{phone}", limit=5, period=300):
-        return jsonify({'success': False, 'error': f'Слишком много неверных попыток для номера {phone}. Подождите 5 минут.'})
+        return jsonify({'success': False, 'error': 'Слишком много неверных попыток. Подождите 5 минут.'})
 
     # Фиксируем попытку ввода для номера
     record_rate_limit_attempt(current_user.id, '/api/telegram/verify_code', f"phone_{phone}")
-    
+
     # ЭКСПОНЕНЦИАЛЬНАЯ ЗАДЕРЖКА (Exponential Backoff)
     # Считаем количество попыток за последние 5 минут
     since_5m = datetime.utcnow() - timedelta(minutes=5)
@@ -710,20 +798,20 @@ def verify_telegram_code():
         IdempotentRequest.target_identifier == f"dev_{device_id}",
         IdempotentRequest.created_at >= since_5m
     ).count()
-    
+
     if attempts_count >= 9:
         time.sleep(60)
     elif attempts_count >= 6:
         time.sleep(10)
     elif attempts_count >= 4:
         time.sleep(2)
-    
-    logger.log_request('/api/telegram/verify_code', 'POST', data={'code': code, 'phone': phone, 'has_password': bool(password)})
-    logger.info(f"API запрос на проверку кода/пароля для: {phone}")
-    
+
+    # SECURITY: Don't log sensitive data (code, password, phone)
+    logger.info(f"API запрос на проверку кода для пользователя {current_user.id}")
+    logger.debug(f"Verify attempt - has_code: {bool(code)}, has_password: {bool(password)}")
+
     if not (code or password) or not phone:
         logger.warning("Отсутствуют обязательные данные для проверки")
-        logger.log_response('/api/telegram/verify_code', 400, 'Missing required data')
         return jsonify({'success': False, 'error': 'Missing required data'})
     
     try:
@@ -765,25 +853,27 @@ def verify_telegram_code():
             # Explicitly mark session as modified to ensure persistence
             session.modified = True
             
-            logger.info(f"Успешная авторизация в Telegram для: {phone}, ID: {me.id}")
+            # SECURITY: Don't log sensitive phone numbers
+            logger.info(f"Успешная авторизация в Telegram для пользователя {current_user.id}, ID: {me.id}")
             logger.info(f"Установлен флаг telegram_authorized=True в сессии для user_id={current_user.id}")
             logger.log_response('/api/telegram/verify_code', 200, 'Авторизация успешна')
-            
+
             # Return explicit completion message
             return jsonify({'success': True, 'message': 'Setup completed'})
         elif result.get('need_password'):
-            logger.info(f"Для пользователя {phone} требуется пароль 2FA")
+            logger.info(f"Для пользователя {current_user.id} требуется пароль 2FA")
             logger.log_response('/api/telegram/verify_code', 200, 'Need 2FA password')
             return jsonify({'success': False, 'error': 'Требуется пароль двухфакторной аутентификации', 'need_password': True})
         else:
             logger.error(f"Ошибка верификации: {result.get('error')}")
             logger.log_response('/api/telegram/verify_code', 401, result.get('error'))
-        
+
         return jsonify(result)
     except Exception as e:
-        logger.error(f"Исключение при верификации: {e}")
-        logger.log_response('/api/telegram/verify_code', 500, str(e))
-        return jsonify({'success': False, 'error': str(e)})
+        # SECURITY: Don't expose internal error details to client
+        logger.error(f"Исключение при верификации для пользователя {current_user.id}: {e}", exc_info=True)
+        logger.log_response('/api/telegram/verify_code', 500, 'Internal error')
+        return safe_error_response("Ошибка при верификации кода")
 
 
 @app.route('/contacts')
@@ -952,8 +1042,9 @@ def upload_image():
 @app.route('/api/telegram/send_message', methods=['POST'])
 @login_required
 @telegram_auth_required
-@csrf.exempt
 def send_message():
+    # SECURITY: CSRF protection is enforced via X-CSRFToken header (sent by api_client.js)
+    # File uploads work with CSRF protection when token is sent as header
     message_text = request.form.get('message') or (request.json.get('message') if request.is_json else None)
     recipient_ids = request.form.getlist('recipients[]') or (request.json.get('recipients', []) if request.is_json else [])
     idempotent_key = request.form.get('idempotent_key') or (request.json.get('idempotent_key') if request.is_json else None)
