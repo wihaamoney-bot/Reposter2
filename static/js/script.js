@@ -319,7 +319,7 @@ window.handleSelectionChange = handleSelectionChange;
     const csrfToken = ApiClient.getCsrfToken();
     if (csrfToken && method !== "GET") {
         options.headers = options.headers || {};
-        options.headers["X-CSRF-Token"] = csrfToken;
+        options.headers["X-CSRFToken"] = csrfToken;
     }
 
     return originalFetch.apply(this, args).then((response) => {

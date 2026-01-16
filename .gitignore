@@ -1,29 +1,34 @@
-# Python
+# Чувствительные данные
+config.json
+.env
+.env.local
+*.key
+*.pem
+
+# Sessions Telethon (содержат auth токены!)
+sessions/*.session
+sessions/
+
+# Логи (могут содержать коды)
+logs/
+logs/*.log
+logs/*.txt
+
+# Uploads временные
+uploads/
+
+# Кэш Python
 __pycache__/
+*.pyc
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Python standard
 *.py[cod]
 *$py.class
-
-# Virtual environments
 venv/
 .venv/
-
-# Environment variables
-.env
-.env.*
-
-# Logs
-logs/*.txt
-logs/*.log
-*.log
-
-# Telethon sessions
-sessions/*.session
-sessions/*.session-journal
-
-# Uploads
-uploads/*
-
-# OS / editor
 .DS_Store
-.idea/
-.vscode/

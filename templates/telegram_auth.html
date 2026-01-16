@@ -182,6 +182,7 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').content
         },
         body: JSON.stringify({ phone: phone, retry: true }),
       });
@@ -243,6 +244,7 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').content
         },
         body: JSON.stringify({ phone: phone }),
       });
@@ -286,6 +288,7 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').content
         },
         body: JSON.stringify({ code: code }),
       });
@@ -331,6 +334,7 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').content
         },
         body: JSON.stringify({ code: code, password: password }),
       });
@@ -361,7 +365,10 @@
     try {
         await fetch("/api/telegram/send_code", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').content
+            },
             body: JSON.stringify({ phone: document.getElementById("phone").value.trim(), retry: true })
         });
         location.reload();

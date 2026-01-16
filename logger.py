@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
@@ -119,14 +120,53 @@ class CustomLogger:
         exc_info = kwargs.pop('exc_info', None)
         stack_info = kwargs.pop('stack_info', None)
         extra = kwargs.pop('extra', None)
+        
+        # Маскируем данные перед логированием
+        masked_msg = self.mask_sensitive_data(msg)
+        masked_kwargs = {k: self.mask_sensitive_data(v, k) for k, v in kwargs.items()}
+
         self.logger.log(
             level,
-            self._format_message(msg, kwargs),
+            self._format_message(masked_msg, masked_kwargs),
             *args,
             exc_info=exc_info,
             stack_info=stack_info,
             extra=extra,
         )
+
+    def mask_sensitive_data(self, data, key=None):
+        """Маскирует чувствительные данные в строке, словаре или другом объекте"""
+        try:
+            if isinstance(data, dict):
+                return {k: self.mask_sensitive_data(v, k) for k, v in data.items()}
+            
+            # Если передан ключ, проверяем его на чувствительность
+            if key:
+                key_lower = key.lower()
+                if any(k in key_lower for k in ['code', 'hash', 'password', 'token', 'api_hash', 'api_id', 'secret', 'device_id']):
+                    val_str = str(data)
+                    if len(val_str) > 4:
+                        return f"***{val_str[-2:]}"
+                    return "***"
+                if 'phone' in key_lower:
+                    val_str = str(data)
+                    if len(val_str) > 7:
+                        return f"{val_str[:2]}***{val_str[-4:]}"
+                    return "***"
+            
+            # Если это строка, ищем паттерны
+            if isinstance(data, str):
+                # Маскируем номера телефонов (+79991234567 -> +7***4567)
+                data = re.sub(r'(\+\d{1,2})\d{4,}(\d{4})', r'\1***\2', data)
+                # Маскируем коды (Код: 12345 -> Код: ***45)
+                data = re.sub(r'(код|code|pass|password|hash|token)(\s*[:=]?\s*)([a-zA-Z0-9]+)', 
+                             lambda m: f"{m.group(1)}{m.group(2)}***{m.group(3)[-2:]}" if len(m.group(3)) > 2 else f"{m.group(1)}{m.group(2)}***", 
+                             data, flags=re.IGNORECASE)
+                return data
+            
+            return data
+        except Exception:
+            return "***"
 
     def debug(self, msg, *args, **kwargs):
         """Debug уровень"""
