@@ -612,6 +612,9 @@
 
       const response = await fetch("/api/scheduler/create", {
         method: "POST",
+        headers: {
+            "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').content
+        },
         body: formData
       });
 
@@ -910,7 +913,7 @@
       const response = await fetch(`/api/scheduler/task/${taskId}/cancel`, {
         method: "POST",
         headers: {
-          'X-CSRF-Token': ApiClient.getCsrfToken(),
+          'X-CSRFToken': ApiClient.getCsrfToken(),
           'Content-Type': 'application/json'
         }
       });

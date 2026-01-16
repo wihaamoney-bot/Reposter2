@@ -47,9 +47,12 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     }
 }
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+app.config['SESSION_COOKIE_SECURE'] = True  # HTTPS only
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # JS не может читать
+app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'  # CSRF protection
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-app.config['WTF_CSRF_CHECK_DEFAULT'] = False
+app.config['WTF_CSRF_CHECK_DEFAULT'] = True
 
 csrf = CSRFProtect(app)
 migrate = Migrate(app, db)
@@ -322,8 +325,9 @@ def login():
             # Redirect based on Telegram authorization status
             next_route = 'contacts' if user.telegram_authorized else 'telegram_auth'
             response = redirect(url_for(next_route))
+            
             # Дублируем device_id в долгосрочную куку (на 30 дней) для надежности
-            response.set_cookie('device_id', device_id, max_age=30*24*60*60, httponly=True, samesite='Lax')
+            response.set_cookie('device_id', device_id, max_age=30*24*60*60, httponly=True, samesite='Strict')
             return response
         else:
             logger.warning(f"Неверные учетные данные для пользователя: {username}")
@@ -370,7 +374,7 @@ def logout():
     # Если у нас был device_id, восстанавливаем его в сессии и куках
     if device_id:
         session['device_id'] = device_id
-        response.set_cookie('device_id', device_id, max_age=30*24*60*60, httponly=True, samesite='Lax')
+        response.set_cookie('device_id', device_id, max_age=30*24*60*60, httponly=True, samesite='Strict')
     
     # Явно удаляем куку сессии Flask (она пересоздастся при необходимости)
     response.set_cookie('session', '', expires=0)
@@ -442,7 +446,7 @@ def telegram_auth():
             
             response = redirect(url_for('contacts'))
             if device_id:
-                response.set_cookie('device_id', device_id, max_age=30*24*60*60, httponly=True, samesite='Lax')
+                response.set_cookie('device_id', device_id, max_age=30*24*60*60, httponly=True, samesite='Strict')
             return response
     except Exception as e:
         logger.error(f"Ошибка проверки Telegram сессии: {e}", exc_info=True)
@@ -542,6 +546,28 @@ def send_telegram_code():
     if not check_rate_limit(current_user.id, '/api/telegram/send_code', f"dev_{device_id}", limit=10, period=300):
         return jsonify({'success': False, 'error': 'Слишком много запросов с вашего устройства. Подождите 5 минут.'})
     
+    # Защита от перебора номеров: 3 разных номера в 24 часа на устройство
+    since_24h = datetime.utcnow() - timedelta(hours=24)
+    recent_numbers_count = db.session.query(IdempotentRequest.target_identifier).filter(
+        IdempotentRequest.user_id == current_user.id,
+        IdempotentRequest.endpoint == '/api/telegram/send_code',
+        IdempotentRequest.target_identifier.like('phone_%'),
+        IdempotentRequest.created_at >= since_24h
+    ).distinct().count()
+    
+    # Если мы пытаемся отправить код на НОВЫЙ номер, а лимит уже исчерпан
+    if recent_numbers_count >= 3:
+        # Проверяем, был ли этот номер уже в списке за 24ч
+        already_tried = IdempotentRequest.query.filter(
+            IdempotentRequest.user_id == current_user.id,
+            IdempotentRequest.endpoint == '/api/telegram/send_code',
+            IdempotentRequest.target_identifier == f"phone_{phone}",
+            IdempotentRequest.created_at >= since_24h
+        ).first()
+        if not already_tried:
+            logger.warning(f"Превышен лимит уникальных номеров (3 за 24ч) для устройства {device_id}")
+            return jsonify({'success': False, 'error': 'Превышен лимит уникальных номеров для отправки. Попробуйте через 24 часа.'})
+    
     if not check_rate_limit(current_user.id, '/api/telegram/send_code', f"phone_{phone}", limit=3, period=300):
         return jsonify({'success': False, 'error': f'Слишком много запросов для номера {phone}. Подождите 5 минут.'})
 
@@ -574,9 +600,9 @@ def send_telegram_code():
             new_hash = AuthCodeHash(
                 user_id=current_user.id,
                 device_id=device_id,
-                phone=phone,
-                phone_code_hash=result['phone_code_hash']
+                phone=phone
             )
+            new_hash.set_phone_code_hash(result['phone_code_hash'])
             db.session.add(new_hash)
             db.session.commit()
             
@@ -666,7 +692,7 @@ def verify_telegram_code():
         return jsonify({'success': False, 'error': 'Сессия истекла или не найдена. Запросите код заново.'})
         
     phone = auth_record.phone
-    phone_code_hash = auth_record.phone_code_hash
+    phone_code_hash = auth_record.get_phone_code_hash()
 
     # Лимит на ВВОД КОДА для конкретного НОМЕРА: 5 раз в 5 минут
     if not check_rate_limit(current_user.id, '/api/telegram/verify_code', f"phone_{phone}", limit=5, period=300):
@@ -674,6 +700,23 @@ def verify_telegram_code():
 
     # Фиксируем попытку ввода для номера
     record_rate_limit_attempt(current_user.id, '/api/telegram/verify_code', f"phone_{phone}")
+    
+    # ЭКСПОНЕНЦИАЛЬНАЯ ЗАДЕРЖКА (Exponential Backoff)
+    # Считаем количество попыток за последние 5 минут
+    since_5m = datetime.utcnow() - timedelta(minutes=5)
+    attempts_count = IdempotentRequest.query.filter(
+        IdempotentRequest.user_id == current_user.id,
+        IdempotentRequest.endpoint == '/api/telegram/verify_code',
+        IdempotentRequest.target_identifier == f"dev_{device_id}",
+        IdempotentRequest.created_at >= since_5m
+    ).count()
+    
+    if attempts_count >= 9:
+        time.sleep(60)
+    elif attempts_count >= 6:
+        time.sleep(10)
+    elif attempts_count >= 4:
+        time.sleep(2)
     
     logger.log_request('/api/telegram/verify_code', 'POST', data={'code': code, 'phone': phone, 'has_password': bool(password)})
     logger.info(f"API запрос на проверку кода/пароля для: {phone}")

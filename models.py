@@ -1,7 +1,9 @@
 from datetime import datetime
+import os
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from cryptography.fernet import Fernet
 
 db = SQLAlchemy()
 
@@ -136,10 +138,33 @@ class AuthCodeHash(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     device_id = db.Column(db.String(50), nullable=False, index=True)
     phone = db.Column(db.String(20), nullable=False)
-    phone_code_hash = db.Column(db.String(100), nullable=False)
+    phone_code_hash = db.Column(db.String(100), nullable=True) # Оставляем для совместимости
+    phone_code_hash_encrypted = db.Column(db.String(255))  # Зашифрованный
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship('User', backref=db.backref('auth_hashes', lazy='dynamic'))
+
+    def set_phone_code_hash(self, value):
+        """Зашифровать phone_code_hash перед сохранением"""
+        if not value:
+            self.phone_code_hash_encrypted = None
+            return
+        key = os.environ.get('ENCRYPTION_KEY')
+        if not key:
+            # Fallback to unencrypted if key not set during transition, but better to raise
+            raise ValueError("ENCRYPTION_KEY not set in environment")
+        cipher = Fernet(key)
+        self.phone_code_hash_encrypted = cipher.encrypt(value.encode()).decode()
+
+    def get_phone_code_hash(self):
+        """Расшифровать phone_code_hash при чтении"""
+        if self.phone_code_hash_encrypted:
+            key = os.environ.get('ENCRYPTION_KEY')
+            if not key:
+                raise ValueError("ENCRYPTION_KEY not set in environment")
+            cipher = Fernet(key)
+            return cipher.decrypt(self.phone_code_hash_encrypted.encode()).decode()
+        return self.phone_code_hash
 
     def __repr__(self):
         return f'<AuthCodeHash {self.device_id}: {self.phone}>'

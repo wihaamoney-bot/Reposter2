@@ -1,11 +1,11 @@
 {
   "admin": {
     "login": "admin",
-    "password": "123"
+    "password": "change_me_in_env"
   },
   "telegram": {
-    "api_id": "37466362",
-    "api_hash": "3f1219c3b13c6ff93bb9bdb4d078afe0",
+    "api_id": 0,
+    "api_hash": "placeholder_change_me_in_env",
     "session_name": "telegram_session"
   },
   "messaging": {

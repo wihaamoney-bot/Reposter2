@@ -14,7 +14,7 @@ const ApiClient = {
         if (csrfToken && method !== "GET") {
             options.headers = {
                 ...options.headers,
-                "X-CSRF-Token": csrfToken
+                "X-CSRFToken": csrfToken
             };
         }
         return window.fetch(url, options);
