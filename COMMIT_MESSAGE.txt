@@ -1,0 +1,37 @@
+Fix Telegram setup session synchronization issue
+
+Problem:
+After successful Telegram authorization, users experienced a "setup required" 
+loop when reloading the page instead of being properly redirected to contacts.
+
+Root cause:
+- telegram_authorized flag was set in DB but not reliably persisted in Flask session
+- index() function didn't sync session with DB value
+- login() always reset telegram_authorized to False regardless of DB value
+- Missing explicit completion message from API
+
+Solution:
+1. Added explicit session.modified = True in verify_telegram_code(), telegram_auth(), 
+   and login() to ensure Flask persists session changes
+2. Implemented session/DB synchronization in index() - DB is source of truth
+3. Changed login() to initialize session from DB value instead of always False
+4. Added explicit "Setup completed" message in verify_code API response
+5. Implemented missing verifyPassword() function in frontend
+6. Added comprehensive logging for debugging session state
+
+Changes:
+- app.py: Enhanced session persistence and DB sync in index(), login(), 
+  telegram_auth(), and verify_telegram_code()
+- templates/telegram_auth.html: Use API message, implement verifyPassword()
+
+Result:
+- Session and DB stay synchronized
+- Page reloads correctly redirect to contacts after authorization
+- Clear completion message displayed to users
+- Comprehensive logging for debugging
+
+Acceptance criteria met:
+✅ "Setup completed" message appears after successful authorization
+✅ Page reload redirects to contacts (no setup loop)
+✅ Explicit logging of telegram_authorized flag changes
+✅ index() checks and syncs both session and DB
